@@ -1,0 +1,59 @@
+name: Work package
+description: Один независимый пакет разработки NoScrol
+title: "[WP/IP-XX] "
+labels:
+  - work-package
+body:
+  - type: input
+    id: package_id
+    attributes:
+      label: Идентификатор пакета
+      placeholder: WP-01 или IP-01
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Область
+      options:
+        - foundation
+        - domain
+        - android
+        - data
+        - ui
+        - integration
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: Цель и границы
+      description: Что должно быть получено за один сеанс и что не входит в пакет.
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Зависимости
+      placeholder: Нет или список закрываемых Issue
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Критерии приёмки
+      placeholder: Используйте checklist
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Проверки
+      placeholder: Unit-тесты, lint, build или ручной сценарий
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Итог сеанса
+      description: Заполняется при завершении — результат, ссылки и известные ограничения.
