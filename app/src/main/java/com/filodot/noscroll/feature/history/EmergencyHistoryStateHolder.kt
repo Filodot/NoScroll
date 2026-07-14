@@ -27,6 +27,7 @@ data class EmergencyHistoryUiState(
 )
 
 sealed interface EmergencyHistoryAction {
+    data class ReplaceItems(val items: List<EmergencyHistoryItemUi>) : EmergencyHistoryAction
     data object RetryLoad : EmergencyHistoryAction
     data object RequestDeleteHistory : EmergencyHistoryAction
     data object CancelDeleteHistory : EmergencyHistoryAction
@@ -51,6 +52,14 @@ class EmergencyHistoryStateHolder(
 
     fun dispatch(action: EmergencyHistoryAction) {
         when (action) {
+            is EmergencyHistoryAction.ReplaceItems -> {
+                mutableState.value = mutableState.value.copy(
+                    items = action.items,
+                    loading = false,
+                    loadError = null,
+                )
+            }
+
             EmergencyHistoryAction.RetryLoad -> {
                 mutableState.value = mutableState.value.copy(loading = true, loadError = null)
                 emitEffect(EmergencyHistoryEffect.RetryLoad)

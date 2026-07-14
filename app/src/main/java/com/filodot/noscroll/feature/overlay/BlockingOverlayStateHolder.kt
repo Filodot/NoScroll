@@ -48,9 +48,10 @@ data class EmergencyFormUiState(
 data class BlockingOverlayUiState(
     val enforcement: EnforcementUiState,
     val emergencyForm: EmergencyFormUiState? = null,
+    val emergencySourceOverride: EmergencyActivationSource? = null,
 ) {
     val emergencySource: EmergencyActivationSource
-        get() = when (enforcement) {
+        get() = emergencySourceOverride ?: when (enforcement) {
             is EnforcementUiState.TaskGate -> EmergencyActivationSource.TASK_GATE
             is EnforcementUiState.DailyLimit -> EmergencyActivationSource.DAILY_LIMIT
         }
@@ -96,10 +97,14 @@ sealed interface BlockingOverlayEffect {
 
 class BlockingOverlayStateHolder(
     initialEnforcement: EnforcementUiState,
+    emergencySourceOverride: EmergencyActivationSource? = null,
     private val emitEffect: (BlockingOverlayEffect) -> Unit = {},
 ) {
     private val mutableState = MutableStateFlow(
-        BlockingOverlayUiState(enforcement = initialEnforcement),
+        BlockingOverlayUiState(
+            enforcement = initialEnforcement,
+            emergencySourceOverride = emergencySourceOverride,
+        ),
     )
     val state: StateFlow<BlockingOverlayUiState> = mutableState.asStateFlow()
 

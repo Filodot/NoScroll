@@ -86,6 +86,19 @@ class EmergencyHistoryStateHolderTest {
         assertEquals(listOf(EmergencyHistoryEffect.RetryLoad), effects)
     }
 
+    @Test
+    fun `integration replacement completes loading with repository snapshot`() {
+        val holder = EmergencyHistoryStateHolder(
+            initialState = EmergencyHistoryUiState(loading = true),
+        )
+
+        holder.dispatch(EmergencyHistoryAction.ReplaceItems(listOf(activeItem())))
+
+        assertEquals(listOf(activeItem()), holder.state.value.items)
+        assertFalse(holder.state.value.loading)
+        assertNull(holder.state.value.loadError)
+    }
+
     private fun holder(
         effects: MutableList<EmergencyHistoryEffect> = mutableListOf(),
     ) = EmergencyHistoryStateHolder(
