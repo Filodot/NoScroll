@@ -15,6 +15,10 @@ class FakeMonotonicClock(
     fun advanceBy(duration: Duration) {
         currentElapsedMillis += duration.toMillis()
     }
+
+    fun setElapsedRealtimeMillis(value: Long) {
+        currentElapsedMillis = value
+    }
 }
 
 class FakeWallClock(
