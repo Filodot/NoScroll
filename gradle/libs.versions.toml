@@ -1,6 +1,6 @@
 [versions]
-agp = "9.0.0"
-kotlin = "2.2.10"
+agp = "9.2.1"
+kotlin = "2.3.10"
 ksp = "2.3.4"
 compose-bom = "2026.01.00"
 activity-compose = "1.12.3"
