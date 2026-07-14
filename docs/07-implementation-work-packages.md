@@ -63,6 +63,8 @@ WP-00 → любые WP-01…WP-15 → IP-01…IP-06
 
 ## 4. Фундамент
 
+<a id="wp-00"></a>
+
 ### WP-00 — Project shell и frozen contracts
 
 **Цель:** создать пустое, запускаемое Android-приложение, на котором все остальные блоки смогут работать независимо.
@@ -84,6 +86,8 @@ WP-00 → любые WP-01…WP-15 → IP-01…IP-06
 
 ## 5. Независимые domain-блоки
 
+<a id="wp-01"></a>
+
 ### WP-01 — Policy Engine
 
 **Владеет:** `core/policy/**`.
@@ -95,6 +99,8 @@ WP-00 → любые WP-01…WP-15 → IP-01…IP-06
 **Приёмка:** покрыты все комбинации приоритета, особенно daily поверх task и выключение Emergency при превышенном daily.
 
 **Не делать:** Android API, overlay и persistence.
+
+<a id="wp-02"></a>
 
 ### WP-02 — Shorts Cycle Counter
 
@@ -108,6 +114,8 @@ WP-00 → любые WP-01…WP-15 → IP-01…IP-06
 
 **Не делать:** определение Shorts и UI.
 
+<a id="wp-03"></a>
+
 ### WP-03 — Daily Usage Reducer
 
 **Владеет:** `core/usage/daily/**`.
@@ -119,6 +127,8 @@ WP-00 → любые WP-01…WP-15 → IP-01…IP-06
 **Приёмка:** midnight, timezone, незакрытый foreground interval, process death и погрешность без отрицательных значений.
 
 **Не делать:** вызовы `UsageStatsManager`.
+
+<a id="wp-04"></a>
 
 ### WP-04 — Local Arithmetic Task Engine
 
@@ -132,6 +142,8 @@ WP-00 → любые WP-01…WP-15 → IP-01…IP-06
 
 **Не делать:** Compose UI и AI.
 
+<a id="wp-05"></a>
+
 ### WP-05 — Presets и Settings Domain
 
 **Владеет:** `core/settings/**`.
@@ -143,6 +155,8 @@ WP-00 → любые WP-01…WP-15 → IP-01…IP-06
 **Приёмка:** границы 1–30 и 10–240, daily off, daily < Shorts warning, immediate recalculation command.
 
 **Не делать:** DataStore и экран настроек.
+
+<a id="wp-06"></a>
 
 ### WP-06 — Emergency Stop Domain
 
@@ -158,6 +172,8 @@ WP-00 → любые WP-01…WP-15 → IP-01…IP-06
 
 ## 6. Независимые data/Android-блоки
 
+<a id="wp-07"></a>
+
 ### WP-07 — Persistence adapters
 
 **Владеет:** `data/local/**`, Room schema/migrations, DataStore adapters.
@@ -169,6 +185,8 @@ WP-00 → любые WP-01…WP-15 → IP-01…IP-06
 **Приёмка:** CRUD, transaction task grant, migration test, active Emergency не удаляется retention job.
 
 **Не делать:** domain decisions и navigation.
+
+<a id="wp-08"></a>
 
 ### WP-08 — YouTube Shorts Detector
 
@@ -182,6 +200,8 @@ WP-00 → любые WP-01…WP-15 → IP-01…IP-06
 
 **Не делать:** Android service, timer и overlay.
 
+<a id="wp-09"></a>
+
 ### WP-09 — Accessibility Service Adapter
 
 **Владеет:** `monitoring/accessibility/**`, service metadata XML и debug-only manifest registration.
@@ -193,6 +213,8 @@ WP-00 → любые WP-01…WP-15 → IP-01…IP-06
 **Приёмка:** события только YouTube, raw text не логируется, scan throttling ≤2/сек, revoke/reconnect без crash.
 
 **Не делать:** detector logic, counters, policy и overlay.
+
+<a id="wp-10"></a>
 
 ### WP-10 — UsageStats Adapter
 
@@ -210,6 +232,8 @@ WP-00 → любые WP-01…WP-15 → IP-01…IP-06
 
 Каждый UI-блок использует state holder с fake repository и Compose previews. Он не добавляет себя в root navigation до интеграции.
 
+<a id="wp-11"></a>
+
 ### WP-11 — Onboarding и permissions UI
 
 **Владеет:** `feature/onboarding/**`.
@@ -219,6 +243,8 @@ WP-00 → любые WP-01…WP-15 → IP-01…IP-06
 **Приёмка:** отказ/возврат/skip daily, checkbox consent, TalkBack и 200% font scale UI tests.
 
 **Не делать:** реальные Settings intents — их подключает IP-05.
+
+<a id="wp-12"></a>
 
 ### WP-12 — Dashboard UI
 
@@ -230,6 +256,8 @@ WP-00 → любые WP-01…WP-15 → IP-01…IP-06
 
 **Не делать:** реальные repositories и navigation.
 
+<a id="wp-13"></a>
+
 ### WP-13 — Limits UI
 
 **Владеет:** `feature/limits/**`.
@@ -240,6 +268,8 @@ WP-00 → любые WP-01…WP-15 → IP-01…IP-06
 
 **Не делать:** DataStore implementation.
 
+<a id="wp-14"></a>
+
 ### WP-14 — Blocking Overlay UI
 
 **Владеет:** `feature/overlay/**`, без реального WindowManager host.
@@ -249,6 +279,8 @@ WP-00 → любые WP-01…WP-15 → IP-01…IP-06
 **Приёмка:** task → daily replacement state, keyboard/insets, exit always visible, Back intent не dismiss bypass.
 
 **Не делать:** `TYPE_ACCESSIBILITY_OVERLAY`, task generation и policy.
+
+<a id="wp-15"></a>
 
 ### WP-15 — Settings, history и data controls UI
 
@@ -264,25 +296,37 @@ WP-00 → любые WP-01…WP-15 → IP-01…IP-06
 
 Интеграционные пакеты выполняются последовательно после нужных WP. Они не добавляют новую доменную логику — только заменяют fake на реальные adapters.
 
+<a id="ip-01"></a>
+
 ### IP-01 — Root navigation и DI
 
 Соединить WP-11…WP-15 в приложение, настроить navigation и dependency graph с fake repositories. Приёмка: полный UI flow работает без Android monitoring.
+
+<a id="ip-02"></a>
 
 ### IP-02 — Settings, persistence и Emergency
 
 Подключить WP-05/06/07 к UI. Приёмка: настройки и Emergency переживают restart; причина/история/delete работают.
 
+<a id="ip-03"></a>
+
 ### IP-03 — Monitoring pipeline
 
 Соединить WP-02/08/09 с redacted diagnostics screen. Приёмка: реальный Shorts меняет detector state и cycle counter, но пока не блокируется.
+
+<a id="ip-04"></a>
 
 ### IP-04 — Task gate pipeline
 
 Соединить WP-01/04/14 с monitoring pipeline и создать реальный `TYPE_ACCESSIBILITY_OVERLAY` host. Приёмка: threshold → task → correct grant/exit/Emergency.
 
+<a id="ip-05"></a>
+
 ### IP-05 — Daily limit и system access
 
 Соединить WP-03/10 с policy/dashboard/daily overlay; добавить Settings intents onboarding. Приёмка: daily имеет приоритет, permission revoke честно отключает функцию.
+
+<a id="ip-06"></a>
 
 ### IP-06 — End-to-end hardening
 
