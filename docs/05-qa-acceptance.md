@@ -1,6 +1,7 @@
 # QA, тестовая стратегия и критерии приёмки
 
-Версия: 1.0  
+Версия: 1.0
+
 Связанные документы: [PRD](01-product-requirements.md), [UX/UI](02-ux-ui-specification.md), [архитектура](03-technical-architecture.md)
 
 ## 1. Цели тестирования
