@@ -23,7 +23,8 @@ internal class HandlerAccessibilityScanScheduler(
 }
 
 /**
- * Coalesces bursts into the newest observation and enforces a hard scan-rate ceiling.
+ * Coalesces bursts and enforces a hard scan-rate ceiling. A scroll marker is preserved until
+ * emission because YouTube normally follows it with lower-value content-change events.
  * This class never retains an Android accessibility node or any UI text.
  */
 internal class AccessibilityEventCoalescer(
@@ -46,7 +47,7 @@ internal class AccessibilityEventCoalescer(
 
     fun offer(event: AccessibilityWindowEvent) {
         synchronized(lock) {
-            pendingEvent = event
+            pendingEvent = mergePendingEvent(pendingEvent, event)
             if (scheduledScan != null) return
 
             val now = elapsedRealtimeMillis().coerceAtLeast(0L)
@@ -60,6 +61,21 @@ internal class AccessibilityEventCoalescer(
                 emitPending(token)
             }
         }
+    }
+
+    private fun mergePendingEvent(
+        current: AccessibilityWindowEvent?,
+        incoming: AccessibilityWindowEvent,
+    ): AccessibilityWindowEvent = when {
+        current == null -> incoming
+        incoming.eventType == AccessibilityAdapterController.TYPE_VIEW_SCROLLED -> incoming
+        current.eventType == AccessibilityAdapterController.TYPE_VIEW_SCROLLED -> current.copy(
+            elapsedRealtimeMillis = max(
+                current.elapsedRealtimeMillis,
+                incoming.elapsedRealtimeMillis,
+            ),
+        )
+        else -> incoming
     }
 
     fun cancelAndReset() {

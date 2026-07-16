@@ -1,5 +1,7 @@
 package com.filodot.noscroll.core.usage.shorts
 
+import com.filodot.noscroll.core.model.ShortsDetectionState
+
 enum class DeferredIntervalAction {
     NONE,
     ARMED,
@@ -13,34 +15,47 @@ enum class DeferredIntervalAction {
  */
 class DeferredIntervalGate(
     private val nextScrollGuardMillis: Long = DEFAULT_NEXT_SCROLL_GUARD_MILLIS,
+    private val forcedExitMillis: Long = DEFAULT_FORCED_EXIT_MILLIS,
 ) {
     private var armedAtElapsedMillis: Long? = null
+    private var shortsObservedSinceArming = false
 
     init {
         require(nextScrollGuardMillis >= 0)
+        require(forcedExitMillis > 0)
     }
 
     @Synchronized
     fun update(
         intervalDue: Boolean,
-        shortsConfirmed: Boolean,
+        shortsState: ShortsDetectionState,
         viewScrolled: Boolean,
         elapsedMillis: Long,
     ): DeferredIntervalAction {
         val safeElapsed = elapsedMillis.coerceAtLeast(0L)
         if (!intervalDue) {
-            armedAtElapsedMillis = null
+            reset()
             return DeferredIntervalAction.NONE
         }
 
         val armedAt = armedAtElapsedMillis
         if (armedAt == null || safeElapsed < armedAt) {
             armedAtElapsedMillis = safeElapsed
+            shortsObservedSinceArming = shortsState == ShortsDetectionState.SHORTS_CONFIRMED
             return DeferredIntervalAction.ARMED
         }
 
+        when (shortsState) {
+            ShortsDetectionState.SHORTS_CONFIRMED -> shortsObservedSinceArming = true
+            ShortsDetectionState.NOT_SHORTS -> shortsObservedSinceArming = false
+            ShortsDetectionState.UNKNOWN -> Unit
+        }
+
         val guardPassed = safeElapsed - armedAt >= nextScrollGuardMillis
-        return if (shortsConfirmed && viewScrolled && guardPassed) {
+        val stillInShorts = shortsState == ShortsDetectionState.SHORTS_CONFIRMED ||
+            shortsState == ShortsDetectionState.UNKNOWN && shortsObservedSinceArming
+        val forcedExitDue = safeElapsed - armedAt >= forcedExitMillis
+        return if (stillInShorts && (viewScrolled && guardPassed || forcedExitDue)) {
             DeferredIntervalAction.ENFORCE
         } else {
             DeferredIntervalAction.ARMED
@@ -50,9 +65,11 @@ class DeferredIntervalGate(
     @Synchronized
     fun reset() {
         armedAtElapsedMillis = null
+        shortsObservedSinceArming = false
     }
 
     companion object {
         const val DEFAULT_NEXT_SCROLL_GUARD_MILLIS = 500L
+        const val DEFAULT_FORCED_EXIT_MILLIS = 2 * 60_000L
     }
 }

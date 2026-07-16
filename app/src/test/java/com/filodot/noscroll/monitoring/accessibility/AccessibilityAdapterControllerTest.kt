@@ -21,7 +21,7 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class AccessibilityAdapterControllerTest {
     @Test
-    fun `coalescer keeps newest event and never emits more than twice per second`() {
+    fun `coalescer preserves scroll marker and never emits more than twice per second`() {
         val scheduler = ManualAccessibilityScanScheduler()
         val emissions = mutableListOf<TimedEvent>()
         val coalescer = AccessibilityEventCoalescer(
@@ -33,12 +33,17 @@ class AccessibilityAdapterControllerTest {
         coalescer.offer(event(type = AccessibilityAdapterController.TYPE_WINDOW_CONTENT_CHANGED, at = 0))
         scheduler.advanceBy(100)
         coalescer.offer(event(type = AccessibilityAdapterController.TYPE_VIEW_SCROLLED, at = 100))
-        scheduler.advanceBy(49)
+        scheduler.advanceBy(20)
+        coalescer.offer(
+            event(type = AccessibilityAdapterController.TYPE_WINDOW_CONTENT_CHANGED, at = 120),
+        )
+        scheduler.advanceBy(29)
         assertTrue(emissions.isEmpty())
 
         scheduler.advanceBy(1)
         assertEquals(listOf(150L), emissions.map(TimedEvent::emittedAt))
         assertEquals(AccessibilityAdapterController.TYPE_VIEW_SCROLLED, emissions.single().event.eventType)
+        assertEquals(120L, emissions.single().event.elapsedRealtimeMillis)
 
         scheduler.advanceBy(1)
         coalescer.offer(event(type = AccessibilityAdapterController.TYPE_WINDOW_CONTENT_CHANGED, at = 151))

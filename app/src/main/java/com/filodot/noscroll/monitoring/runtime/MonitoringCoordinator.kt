@@ -458,28 +458,39 @@ class MonitoringCoordinator(
                 }
 
                 else -> {
-                    val eventElapsed = triggeringEvent?.elapsedRealtimeMillis
-                        ?: SystemClock.elapsedRealtime()
-                    val action = deferredIntervalGate.update(
-                        intervalDue = true,
-                        shortsConfirmed = latestDetectionState ==
-                            ShortsDetectionState.SHORTS_CONFIRMED,
-                        viewScrolled = triggeringEvent?.eventType ==
-                            AccessibilityAdapterController.TYPE_VIEW_SCROLLED,
-                        elapsedMillis = eventElapsed,
-                    )
-                    if (action == DeferredIntervalAction.ENFORCE) {
-                        showEnforcement(ensureTask(cycle, usage, TaskTrigger.INTERVAL))
-                        deferredIntervalGate.reset()
-                        requestShortsEjection()
-                    }
+                    handleDeferredInterval(cycle, usage, triggeringEvent)
                 }
             }
 
-            PolicyDecision.Allow -> if (!intervalDue) deferredIntervalGate.reset()
+            PolicyDecision.Allow -> if (intervalDue) {
+                handleDeferredInterval(cycle, usage, triggeringEvent)
+            } else {
+                deferredIntervalGate.reset()
+            }
             PolicyDecision.EmergencyBypass,
             is PolicyDecision.RequirementsMissing,
             -> deferredIntervalGate.reset()
+        }
+    }
+
+    private suspend fun handleDeferredInterval(
+        cycle: GateCycle,
+        usage: DailyUsage,
+        triggeringEvent: AccessibilityWindowEvent?,
+    ) {
+        val eventElapsed = triggeringEvent?.elapsedRealtimeMillis
+            ?: SystemClock.elapsedRealtime()
+        val action = deferredIntervalGate.update(
+            intervalDue = true,
+            shortsState = latestDetectionState,
+            viewScrolled = triggeringEvent?.eventType ==
+                AccessibilityAdapterController.TYPE_VIEW_SCROLLED,
+            elapsedMillis = eventElapsed,
+        )
+        if (action == DeferredIntervalAction.ENFORCE) {
+            showEnforcement(ensureTask(cycle, usage, TaskTrigger.INTERVAL))
+            deferredIntervalGate.reset()
+            requestShortsEjection()
         }
     }
 
