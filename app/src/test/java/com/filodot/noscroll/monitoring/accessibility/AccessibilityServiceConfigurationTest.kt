@@ -102,6 +102,21 @@ class AccessibilityServiceConfigurationTest {
         assertFalse(source.contains("println("))
     }
 
+    @Test
+    fun `production accessibility path contains no overlay window`() {
+        val sourceDirectory = projectFile(
+            "app/src/main/java/com/filodot/noscroll/monitoring/accessibility",
+        )
+        val source = sourceDirectory.walkTopDown()
+            .filter { it.isFile && it.extension == "kt" }
+            .joinToString(separator = "\n") { it.readText() }
+
+        assertFalse(source.contains("TYPE_ACCESSIBILITY_OVERLAY"))
+        assertFalse(source.contains("WindowManager.LayoutParams"))
+        assertFalse(File(sourceDirectory, "AccessibilityBlockingOverlay.kt").exists())
+        assertTrue(source.contains("ejectShortsAndOpenChallenge"))
+    }
+
     private fun projectFile(relativePath: String): File {
         val workingDirectory = File(requireNotNull(System.getProperty("user.dir")))
         val candidates = listOf(

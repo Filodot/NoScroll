@@ -93,8 +93,18 @@ private fun EnforcementScreen(
     Scaffold(
         bottomBar = {
             EscapeActions(
-                dailyLimit = enforcement is EnforcementUiState.DailyLimit,
-                onExit = { onAction(BlockingOverlayAction.ExitYouTube) },
+                enforcement = enforcement,
+                onExit = {
+                    val solvedTask = (enforcement as? EnforcementUiState.TaskGate)
+                        ?.answerStatus == TaskAnswerStatus.CORRECT
+                    onAction(
+                        if (solvedTask) {
+                            BlockingOverlayAction.OpenYouTube
+                        } else {
+                            BlockingOverlayAction.ExitYouTube
+                        },
+                    )
+                },
                 onEmergency = { onAction(BlockingOverlayAction.OpenEmergencyForm) },
             )
         },
@@ -152,9 +162,11 @@ private fun TaskGateContent(
     Spacer(Modifier.height(8.dp))
     Text(
         text = if (task.trigger == TaskTrigger.ENTRY) {
-            "Решите пример — это плата за вход в новую сессию Shorts"
+            "Сначала решите пример здесь. После этого Shorts откроются на " +
+                "${task.grantMinutes} минут"
         } else {
-            "Решите пример, чтобы открыть Shorts ещё на ${task.grantMinutes} минут"
+            "Пауза началась после вашего следующего свайпа. Решите пример, чтобы снова " +
+                "открыть Shorts на ${task.grantMinutes} минут"
         },
         style = MaterialTheme.typography.bodyLarge,
     )
@@ -168,7 +180,7 @@ private fun TaskGateContent(
     )
     Spacer(Modifier.height(24.dp))
     if (task.answerStatus == TaskAnswerStatus.CORRECT) {
-        SuccessMessage("Готово — ещё ${task.grantMinutes} минут")
+        SuccessMessage("Готово — Shorts открыты на ${task.grantMinutes} минут")
     } else {
         OutlinedTextField(
             value = task.answer,
@@ -262,7 +274,7 @@ private fun DailyLimitContent(daily: EnforcementUiState.DailyLimit) {
 
 @Composable
 private fun EscapeActions(
-    dailyLimit: Boolean,
+    enforcement: EnforcementUiState,
     onExit: () -> Unit,
     onEmergency: () -> Unit,
 ) {
@@ -275,14 +287,23 @@ private fun EscapeActions(
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            if (dailyLimit) {
+            val task = enforcement as? EnforcementUiState.TaskGate
+            if (enforcement is EnforcementUiState.DailyLimit ||
+                task?.answerStatus == TaskAnswerStatus.CORRECT
+            ) {
                 Button(
                     onClick = onExit,
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 48.dp),
                 ) {
-                    Text("Выйти из YouTube")
+                    Text(
+                        if (task?.answerStatus == TaskAnswerStatus.CORRECT) {
+                            "Открыть YouTube"
+                        } else {
+                            "На главный экран"
+                        },
+                    )
                 }
             } else {
                 OutlinedButton(
@@ -291,7 +312,7 @@ private fun EscapeActions(
                         .fillMaxWidth()
                         .heightIn(min = 48.dp),
                 ) {
-                    Text("Выйти из YouTube")
+                    Text("Решить позже")
                 }
             }
             TextButton(

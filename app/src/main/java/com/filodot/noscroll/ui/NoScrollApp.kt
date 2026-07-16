@@ -2,6 +2,7 @@ package com.filodot.noscroll.ui
 
 import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -36,6 +37,7 @@ import com.filodot.noscroll.core.model.EmergencyEvent
 import com.filodot.noscroll.core.model.EmergencyState
 import com.filodot.noscroll.core.model.GateCycle
 import com.filodot.noscroll.core.model.DailyUsage
+import com.filodot.noscroll.core.model.PendingTask
 import com.filodot.noscroll.core.model.ShortsDetectionState
 import com.filodot.noscroll.core.model.UserSettings
 import com.filodot.noscroll.feature.dashboard.DashboardAction
@@ -63,6 +65,7 @@ import com.filodot.noscroll.feature.overlay.BlockingOverlayEffect
 import com.filodot.noscroll.feature.overlay.BlockingOverlayScreen
 import com.filodot.noscroll.feature.overlay.BlockingOverlayStateHolder
 import com.filodot.noscroll.feature.overlay.EnforcementUiState
+import com.filodot.noscroll.feature.overlay.TaskAnswerStatus
 import com.filodot.noscroll.feature.settings.DetectorUiStatus
 import com.filodot.noscroll.feature.settings.DiagnosticResultCode
 import com.filodot.noscroll.feature.settings.RedactedDiagnosticsUiState
@@ -71,6 +74,7 @@ import com.filodot.noscroll.feature.settings.SettingsScreen
 import com.filodot.noscroll.feature.settings.SettingsUiState
 import com.filodot.noscroll.feature.settings.SystemAccessUiStatus
 import com.filodot.noscroll.monitoring.runtime.MonitoringDiagnostics
+import com.filodot.noscroll.monitoring.runtime.MonitoringCoordinator
 import com.filodot.noscroll.platform.SystemAccessSnapshot
 import java.time.Duration
 import java.time.Instant
@@ -104,7 +108,12 @@ fun NoScrollApp(
     val settings by appGraph.settingsRepository.settings.collectAsStateWithLifecycle()
     val dailyUsage by appGraph.usageRepository.dailyUsage.collectAsStateWithLifecycle()
     val gateCycle by appGraph.usageRepository.gateCycle.collectAsStateWithLifecycle()
+    val pendingTask by appGraph.taskRepository.pendingTask.collectAsStateWithLifecycle()
     val emergencyState by appGraph.emergencyRepository.state.collectAsStateWithLifecycle()
+    val activeEnforcement = appGraph.monitoring?.let { monitoring ->
+        val state by monitoring.enforcement.collectAsStateWithLifecycle()
+        state
+    }
     val accessState = appGraph.systemAccess?.let { access ->
         val state by access.state.collectAsStateWithLifecycle()
         state
@@ -116,7 +125,14 @@ fun NoScrollApp(
     val dashboardState = if (accessState == null) {
         appGraph.dashboardState
     } else {
-        buildDashboardState(settings, dailyUsage, gateCycle, emergencyState, accessState)
+        buildDashboardState(
+            settings = settings,
+            usage = dailyUsage,
+            cycle = gateCycle,
+            pendingTask = pendingTask,
+            emergencyState = emergencyState,
+            access = accessState,
+        )
     }
     val settingsState = if (accessState == null) {
         appGraph.settingsState
@@ -228,6 +244,7 @@ fun NoScrollApp(
                     BlockingOverlayEffect.RequestAnotherTask,
                     BlockingOverlayEffect.TaskSolved,
                     BlockingOverlayEffect.EmergencyActivated,
+                    BlockingOverlayEffect.OpenYouTube,
                     is BlockingOverlayEffect.VerifyAnswer,
                     -> Unit
                 }
@@ -304,14 +321,25 @@ fun NoScrollApp(
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner, appGraph, onboardingHolder) {
+    DisposableEffect(
+        lifecycleOwner,
+        appGraph,
+        onboardingHolder,
+        settings.onboardingCompleted,
+    ) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 refreshOnboardingPermissions(onboardingHolder, appGraph)
+                if (settings.onboardingCompleted) {
+                    scope.launch { appGraph.monitoring?.prepareChallengeForApp() }
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(appGraph, settings.onboardingCompleted) {
+        if (settings.onboardingCompleted) appGraph.monitoring?.prepareChallengeForApp()
     }
 
     val initialRoute = remember(appGraph) {
@@ -348,6 +376,10 @@ fun NoScrollApp(
                                     appGraph.systemAccess?.let { access ->
                                         context.openSystemSettings(access.usageAccessSettingsIntent())
                                     }
+
+                                DashboardAction.OpenChallenge -> scope.launch {
+                                    appGraph.monitoring?.prepareChallengeForApp()
+                                }
 
                                 is DashboardAction.SetEmergencyEnabled -> {
                                     if (action.enabled) {
@@ -446,17 +478,96 @@ fun NoScrollApp(
             }
         }
         SnackbarHost(hostState = snackbarHostState)
+        activeEnforcement?.let { enforcement ->
+            InAppChallengeHost(
+                enforcement = enforcement,
+                monitoring = appGraph.monitoring,
+                snackbarHostState = snackbarHostState,
+            )
+        }
     }
+}
+
+@Composable
+private fun InAppChallengeHost(
+    enforcement: EnforcementUiState,
+    monitoring: MonitoringCoordinator,
+    snackbarHostState: SnackbarHostState,
+) {
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    lateinit var holder: BlockingOverlayStateHolder
+    holder = remember(enforcement, monitoring, scope) {
+        BlockingOverlayStateHolder(
+            initialEnforcement = enforcement,
+            emitEffect = { effect ->
+                when (effect) {
+                    is BlockingOverlayEffect.VerifyAnswer -> scope.launch {
+                        val correct = monitoring.verifyAnswer(effect.taskId, effect.answer)
+                        holder.dispatch(BlockingOverlayAction.AnswerChecked(correct))
+                    }
+
+                    BlockingOverlayEffect.RequestAnotherTask -> scope.launch {
+                        monitoring.replaceTask()?.let { replacement ->
+                            holder.dispatch(BlockingOverlayAction.ShowTask(replacement))
+                        }
+                    }
+
+                    BlockingOverlayEffect.ExitYouTube -> scope.launch {
+                        val current = holder.state.value.enforcement
+                        val solved = (current as? EnforcementUiState.TaskGate)
+                            ?.answerStatus == TaskAnswerStatus.CORRECT
+                        if (solved) {
+                            monitoring.completeChallengePresentation()
+                        } else {
+                            monitoring.dismissEnforcement(
+                                recordExit = current is EnforcementUiState.TaskGate,
+                            )
+                            snackbarHostState.showSnackbar(
+                                if (current is EnforcementUiState.TaskGate) {
+                                    "Shorts останутся заблокированы до решения задания"
+                                } else {
+                                    "Дневной лимит продолжает действовать"
+                                },
+                            )
+                        }
+                    }
+
+                    BlockingOverlayEffect.OpenYouTube -> scope.launch {
+                        monitoring.completeChallengePresentation()
+                        context.openYouTube {
+                            snackbarHostState.showSnackbar("Не удалось открыть YouTube")
+                        }
+                    }
+
+                    is BlockingOverlayEffect.ConfirmEmergency -> scope.launch {
+                        monitoring.activateEmergency(effect.normalizedReason, effect.source)
+                        holder.dispatch(
+                            BlockingOverlayAction.EmergencyActivationFinished(succeeded = true),
+                        )
+                    }
+
+                    BlockingOverlayEffect.TaskSolved,
+                    BlockingOverlayEffect.EmergencyActivated,
+                    -> Unit
+                }
+            },
+        )
+    }
+    val state by holder.state.collectAsStateWithLifecycle()
+    BlockingOverlayScreen(state = state, onAction = holder::dispatch)
 }
 
 private fun buildDashboardState(
     settings: UserSettings,
     usage: DailyUsage,
     cycle: GateCycle,
+    pendingTask: PendingTask?,
     emergencyState: EmergencyState,
     access: SystemAccessSnapshot,
 ): DashboardUiState {
     val activeEmergency = emergencyState.activeEvent
+    val now = Instant.now()
     return DashboardUiState(
         dateLabel = usage.localDate.format(
             DateTimeFormatter.ofPattern("d MMMM", Locale.forLanguageTag("ru")),
@@ -468,6 +579,16 @@ private fun buildDashboardState(
                 intervalSeconds = settings.shortsIntervalMinutes.toLong() * 60,
                 todaySeconds = usage.shortsSeconds,
                 seenToday = usage.shortsSeconds > 0,
+                accessLocked = !(
+                    settings.emergencyActive || emergencyState.isActive
+                    ) && (
+                    pendingTask != null ||
+                        cycle.entryCooldownUntil?.isAfter(now) != true
+                    ),
+                unlockedUntilLabel = cycle.entryCooldownUntil
+                    ?.takeIf { it.isAfter(now) }
+                    ?.atZone(ZoneId.systemDefault())
+                    ?.format(DateTimeFormatter.ofPattern("HH:mm")),
             )
         } else {
             ShortsLimitUiState.Disabled
@@ -505,7 +626,6 @@ private fun buildSettingsState(
     youtubeVersionLabel = access.youtubeVersionName,
     diagnostics = RedactedDiagnosticsUiState(
         detectorStatus = when {
-            !diagnostics.overlayAvailable -> DetectorUiStatus.ERROR
             !access.accessibilityGranted -> DetectorUiStatus.INACTIVE
             diagnostics.detectorState == ShortsDetectionState.UNKNOWN ->
                 DetectorUiStatus.UNKNOWN_LAYOUT
@@ -514,14 +634,10 @@ private fun buildSettingsState(
         },
         lastRecognitionLabel = diagnostics.lastRecognitionAt?.atZone(ZoneId.systemDefault())
             ?.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)),
-        lastResultCode = if (!diagnostics.overlayAvailable) {
-            DiagnosticResultCode.ACCESS_UNAVAILABLE
-        } else {
-            when (diagnostics.detectorState) {
-                ShortsDetectionState.SHORTS_CONFIRMED -> DiagnosticResultCode.SHORTS_CONFIRMED
-                ShortsDetectionState.NOT_SHORTS -> DiagnosticResultCode.NON_SHORTS_CONFIRMED
-                ShortsDetectionState.UNKNOWN -> DiagnosticResultCode.UNKNOWN
-            }
+        lastResultCode = when (diagnostics.detectorState) {
+            ShortsDetectionState.SHORTS_CONFIRMED -> DiagnosticResultCode.SHORTS_CONFIRMED
+            ShortsDetectionState.NOT_SHORTS -> DiagnosticResultCode.NON_SHORTS_CONFIRMED
+            ShortsDetectionState.UNKNOWN -> DiagnosticResultCode.UNKNOWN
         },
         unknownCount = diagnostics.unknownCount,
         rulesVersion = diagnostics.rulesVersion,
@@ -579,6 +695,20 @@ private fun Context.openSystemSettings(
     intent: android.content.Intent,
     onUnavailable: () -> Unit = {},
 ) {
+    try {
+        startActivity(intent)
+    } catch (_: ActivityNotFoundException) {
+        onUnavailable()
+    }
+}
+
+private suspend fun Context.openYouTube(onUnavailable: suspend () -> Unit) {
+    val intent = packageManager.getLaunchIntentForPackage(YOUTUBE_PACKAGE_NAME)
+        ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    if (intent == null) {
+        onUnavailable()
+        return
+    }
     try {
         startActivity(intent)
     } catch (_: ActivityNotFoundException) {
@@ -647,3 +777,5 @@ private sealed class AppRoute(
         val topLevel = listOf(Dashboard, Limits, Settings)
     }
 }
+
+private const val YOUTUBE_PACKAGE_NAME = "com.google.android.youtube"

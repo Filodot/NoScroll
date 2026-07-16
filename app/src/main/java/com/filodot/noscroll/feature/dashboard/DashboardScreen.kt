@@ -62,7 +62,11 @@ fun DashboardScreen(
                 ProtectionStatusChip(state.protectionStatus)
                 PriorityStateBanner(state, onAction)
                 Spacer(Modifier.height(16.dp))
-                ShortsCard(state.shorts, paused = state.emergency.active)
+                ShortsCard(
+                    shorts = state.shorts,
+                    paused = state.emergency.active,
+                    onAction = onAction,
+                )
                 Spacer(Modifier.height(16.dp))
                 DailyCard(state.daily, paused = state.emergency.active, onAction = onAction)
                 Spacer(Modifier.height(16.dp))
@@ -190,6 +194,7 @@ private fun PriorityStateBanner(
 private fun ShortsCard(
     shorts: ShortsLimitUiState,
     paused: Boolean,
+    onAction: (DashboardAction) -> Unit,
 ) {
     DashboardCard(title = "Shorts") {
         when (shorts) {
@@ -202,6 +207,27 @@ private fun ShortsCard(
             }
 
             is ShortsLimitUiState.Enabled -> {
+                if (shorts.accessLocked && !paused) {
+                    Text(
+                        text = "Shorts заблокированы",
+                        style = MaterialTheme.typography.titleLarge,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "Откройте задание в NoScrol и осознанно разблокируйте " +
+                            "следующие ${wholeMinutes(shorts.intervalSeconds)} минут",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Button(
+                        onClick = { onAction(DashboardAction.OpenChallenge) },
+                        modifier = Modifier.heightIn(min = 48.dp),
+                    ) {
+                        Text("Открыть задание")
+                    }
+                    return@DashboardCard
+                }
                 val progress = progress(
                     usedSeconds = shorts.cycleUsedSeconds,
                     limitSeconds = shorts.intervalSeconds,
@@ -222,6 +248,14 @@ private fun ShortsCard(
                     text = "До паузы: ${formatCountdown(progress.remainingSeconds)}",
                     style = MaterialTheme.typography.titleLarge,
                 )
+                shorts.unlockedUntilLabel?.let { label ->
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "Вход разрешён до $label",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = if (shorts.seenToday) {

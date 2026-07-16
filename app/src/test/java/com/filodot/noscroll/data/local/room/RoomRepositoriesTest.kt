@@ -164,9 +164,17 @@ class RoomRepositoriesTest {
             gateCycle(date, createdAt).copy(usedSeconds = 300, pendingTaskId = task.id).toEntity(),
         )
         val transaction = RoomTaskGrantTransaction(database.taskGrantDao())
+        val cooldownUntil = grantedAt.plusSeconds(300)
 
-        assertTrue(transaction.grant(task.id, date, grantedAt))
-        assertFalse(transaction.grant(task.id, date, grantedAt.plusSeconds(1)))
+        assertTrue(transaction.grant(task.id, date, grantedAt, cooldownUntil))
+        assertFalse(
+            transaction.grant(
+                task.id,
+                date,
+                grantedAt.plusSeconds(1),
+                cooldownUntil.plusSeconds(1),
+            ),
+        )
 
         val daily = requireNotNull(database.dailyUsageDao().get(date.toString())).toModel()
         val cycle = requireNotNull(database.gateCycleDao().get(GateCycle.CURRENT_GATE_CYCLE_ID))
@@ -174,6 +182,7 @@ class RoomRepositoriesTest {
         assertEquals(1, daily.tasksSolved)
         assertEquals(grantedAt, daily.updatedAt)
         assertEquals(0, cycle.usedSeconds)
+        assertEquals(cooldownUntil, cycle.entryCooldownUntil)
         assertNull(cycle.pendingTaskId)
         assertEquals(grantedAt, cycle.updatedAt)
         assertNull(database.pendingTaskDao().get(task.id))
@@ -229,7 +238,12 @@ class RoomRepositoriesTest {
         database.gateCycleDao().upsert(cycle.toEntity())
 
         val granted = RoomTaskGrantTransaction(database.taskGrantDao())
-            .grant(task.id, date, now.plusSeconds(10))
+            .grant(
+                task.id,
+                date,
+                now.plusSeconds(10),
+                entryCooldownUntil = now.plusSeconds(310),
+            )
 
         assertFalse(granted)
         assertEquals(task, database.pendingTaskDao().get(task.id)?.toModel())

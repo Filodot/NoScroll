@@ -8,6 +8,8 @@ sealed interface ShortsLimitUiState {
         val intervalSeconds: Long,
         val todaySeconds: Long,
         val seenToday: Boolean = true,
+        val accessLocked: Boolean = false,
+        val unlockedUntilLabel: String? = null,
     ) : ShortsLimitUiState
 
     data object Disabled : ShortsLimitUiState
@@ -66,6 +68,7 @@ sealed interface DashboardAction {
     data object ShowHelp : DashboardAction
     data object OpenAccessibilitySettings : DashboardAction
     data object OpenUsageAccessSettings : DashboardAction
+    data object OpenChallenge : DashboardAction
     data class SetEmergencyEnabled(val enabled: Boolean) : DashboardAction
 }
 

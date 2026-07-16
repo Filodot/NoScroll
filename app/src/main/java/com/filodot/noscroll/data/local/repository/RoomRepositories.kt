@@ -115,13 +115,13 @@ class RoomTaskGrantTransaction(
         taskId: String,
         localDate: LocalDate,
         updatedAt: Instant,
-        entryCooldownUntil: Instant? = null,
+        entryCooldownUntil: Instant,
         cycleId: String = GateCycle.CURRENT_GATE_CYCLE_ID,
     ): Boolean = dao.grant(
         taskId = taskId,
         localDate = localDate.toString(),
         cycleId = cycleId,
         updatedAtEpochMillis = updatedAt.toEpochMilli(),
-        entryCooldownUntilEpochMillis = entryCooldownUntil?.toEpochMilli(),
+        entryCooldownUntilEpochMillis = entryCooldownUntil.toEpochMilli(),
     )
 }

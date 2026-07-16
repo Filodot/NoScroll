@@ -12,6 +12,8 @@ import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
+import android.widget.Toast
+import com.filodot.noscroll.MainActivity
 import com.filodot.noscroll.NoScrollApplication
 import com.filodot.noscroll.core.contracts.AccessibilityEventSource
 import com.filodot.noscroll.core.contracts.DeviceStateSource
@@ -21,10 +23,6 @@ import com.filodot.noscroll.core.model.DeviceState
 import com.filodot.noscroll.core.model.WindowSnapshot
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 
 /**
  * Package-scoped Android adapter. It does not detect Shorts, count time, enforce policy, or draw UI.
@@ -34,12 +32,13 @@ class NoScrollAccessibilityService :
     AccessibilityEventSource,
     WindowSnapshotProvider,
     DeviceStateSource {
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val snapshotProvider by lazy {
         AndroidWindowSnapshotProvider(rootProvider = { rootInActiveWindow })
     }
     private val controller by lazy {
         AccessibilityAdapterController(
-            scheduler = HandlerAccessibilityScanScheduler(Handler(Looper.getMainLooper())),
+            scheduler = HandlerAccessibilityScanScheduler(mainHandler),
             elapsedRealtimeMillis = SystemClock::elapsedRealtime,
             screenStateProvider = ::readScreenState,
             snapshotCapture = snapshotProvider::capture,
@@ -50,9 +49,7 @@ class NoScrollAccessibilityService :
             if (intent?.action in SCREEN_STATE_ACTIONS) controller.onScreenStateChanged()
         }
     }
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var screenReceiverRegistered = false
-    private var blockingOverlay: AccessibilityBlockingOverlay? = null
 
     override val events: Flow<AccessibilityWindowEvent>
         get() = controller.events
@@ -67,18 +64,11 @@ class NoScrollAccessibilityService :
         runtime()?.let { runtime ->
             runtime.systemAccess.refresh()
             runtime.monitoring.attach(this)
-            blockingOverlay?.stop()
-            blockingOverlay = AccessibilityBlockingOverlay(
-                service = this,
-                monitoring = runtime.monitoring,
-                scope = serviceScope,
-            ).also(AccessibilityBlockingOverlay::start)
         }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
-        if (blockingOverlay?.shouldIgnoreAccessibilityEvent(event) == true) return
         controller.onAccessibilityEvent(
             packageName = event.packageName,
             eventType = event.eventType,
@@ -100,13 +90,40 @@ class NoScrollAccessibilityService :
     override fun onDestroy() {
         controller.onServiceInterrupted()
         stopRuntimeConnection()
-        serviceScope.cancel()
         unregisterScreenReceiverIfNeeded()
         super.onDestroy()
     }
 
     override suspend fun capture(event: AccessibilityWindowEvent): WindowSnapshot? =
         controller.capture(event)
+
+    /** Leaves the Shorts player first, then opens the in-app challenge screen. */
+    fun ejectShortsAndOpenChallenge() {
+        mainHandler.post {
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            mainHandler.postDelayed(
+                {
+                    try {
+                        startActivity(
+                            Intent(this, MainActivity::class.java)
+                                .addFlags(
+                                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                                        Intent.FLAG_ACTIVITY_SINGLE_TOP,
+                                ),
+                        )
+                    } catch (_: RuntimeException) {
+                        Toast.makeText(
+                            this,
+                            "Откройте NoScroll, чтобы решить задание",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                },
+                OPEN_APP_AFTER_BACK_MILLIS,
+            )
+        }
+    }
 
     private fun readScreenState(): ScreenStateSample {
         val powerManager = getSystemService(PowerManager::class.java)
@@ -152,8 +169,6 @@ class NoScrollAccessibilityService :
     private fun runtime() = (application as? NoScrollApplication)?.runtime
 
     private fun stopRuntimeConnection() {
-        blockingOverlay?.stop()
-        blockingOverlay = null
         runtime()?.monitoring?.detach()
     }
 
@@ -163,5 +178,6 @@ class NoScrollAccessibilityService :
             Intent.ACTION_SCREEN_OFF,
             Intent.ACTION_USER_PRESENT,
         )
+        private const val OPEN_APP_AFTER_BACK_MILLIS = 250L
     }
 }

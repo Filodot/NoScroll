@@ -71,6 +71,7 @@ sealed interface BlockingOverlayAction {
         BlockingOverlayAction
 
     data object ExitYouTube : BlockingOverlayAction
+    data object OpenYouTube : BlockingOverlayAction
     data object SystemBack : BlockingOverlayAction
     data object OpenEmergencyForm : BlockingOverlayAction
     data class UpdateEmergencyReason(val value: String) : BlockingOverlayAction
@@ -90,6 +91,7 @@ sealed interface BlockingOverlayEffect {
 
     data object RequestAnotherTask : BlockingOverlayEffect
     data object ExitYouTube : BlockingOverlayEffect
+    data object OpenYouTube : BlockingOverlayEffect
     data class ConfirmEmergency(
         val normalizedReason: String,
         val source: EmergencyActivationSource,
@@ -121,6 +123,7 @@ class BlockingOverlayStateHolder(
             is BlockingOverlayAction.ShowTask -> showTask(action.task)
             is BlockingOverlayAction.DailyLimitReached -> showDaily(action.daily)
             BlockingOverlayAction.ExitYouTube -> emitEffect(BlockingOverlayEffect.ExitYouTube)
+            BlockingOverlayAction.OpenYouTube -> emitEffect(BlockingOverlayEffect.OpenYouTube)
             BlockingOverlayAction.SystemBack -> handleBack()
             BlockingOverlayAction.OpenEmergencyForm -> openEmergencyForm()
             is BlockingOverlayAction.UpdateEmergencyReason ->

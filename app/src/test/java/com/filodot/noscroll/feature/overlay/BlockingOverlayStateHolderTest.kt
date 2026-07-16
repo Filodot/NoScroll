@@ -111,6 +111,16 @@ class BlockingOverlayStateHolderTest {
     }
 
     @Test
+    fun `open YouTube is a distinct explicit effect`() {
+        val effects = mutableListOf<BlockingOverlayEffect>()
+        val holder = holder(effects)
+
+        holder.dispatch(BlockingOverlayAction.OpenYouTube)
+
+        assertEquals(listOf(BlockingOverlayEffect.OpenYouTube), effects)
+    }
+
+    @Test
     fun `Back on emergency form cancels form but preserves gate`() {
         val effects = mutableListOf<BlockingOverlayEffect>()
         val holder = holder(effects)

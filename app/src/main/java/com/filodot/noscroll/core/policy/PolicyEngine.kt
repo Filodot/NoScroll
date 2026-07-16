@@ -59,12 +59,6 @@ class PolicyEngine {
                     trigger = input.pendingTask?.trigger ?: TaskTrigger.INTERVAL,
                 )
             }
-            if (!input.entryGatePaid) {
-                return PolicyDecision.TaskGateRequired(
-                    pendingTaskId = null,
-                    trigger = TaskTrigger.ENTRY,
-                )
-            }
             val shortsLimitSeconds = input.settings.shortsIntervalMinutes.toPositiveSeconds()
             val intervalReached = shortsLimitSeconds != null &&
                 input.gateCycle.usedSeconds >= shortsLimitSeconds
@@ -73,6 +67,12 @@ class PolicyEngine {
                 return PolicyDecision.TaskGateRequired(
                     pendingTaskId = null,
                     trigger = TaskTrigger.INTERVAL,
+                )
+            }
+            if (!input.entryGatePaid) {
+                return PolicyDecision.TaskGateRequired(
+                    pendingTaskId = null,
+                    trigger = TaskTrigger.ENTRY,
                 )
             }
         }

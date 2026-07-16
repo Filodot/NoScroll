@@ -82,6 +82,26 @@ class DashboardScreenTest {
     }
 
     @Test
+    fun lockedShortsOffersInAppChallenge() {
+        var lastAction: DashboardAction? = null
+        composeRule.setDashboard(
+            state = normalState().copy(
+                shorts = ShortsLimitUiState.Enabled(
+                    cycleUsedSeconds = 0,
+                    intervalSeconds = 300,
+                    todaySeconds = 0,
+                    accessLocked = true,
+                ),
+            ),
+            onAction = { lastAction = it },
+        )
+
+        composeRule.onNodeWithText("Shorts заблокированы").assertIsDisplayed()
+        composeRule.onNodeWithText("Открыть задание").performClick()
+        composeRule.runOnIdle { check(lastAction == DashboardAction.OpenChallenge) }
+    }
+
+    @Test
     fun allLimitsDisabled_disablesEmergencySwitchWithExplanation() {
         composeRule.setDashboard(
             normalState().copy(

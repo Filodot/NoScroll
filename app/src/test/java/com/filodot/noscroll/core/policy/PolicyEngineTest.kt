@@ -165,6 +165,22 @@ class PolicyEngineTest {
     }
 
     @Test
+    fun `expired interval takes priority over a new entry fee`() {
+        val decision = engine.decide(
+            input(
+                entryGatePaid = false,
+                cycleSeconds = SHORTS_LIMIT_SECONDS,
+                detectorState = ShortsDetectionState.SHORTS_CONFIRMED,
+            ),
+        )
+
+        assertEquals(
+            PolicyDecision.TaskGateRequired(null, TaskTrigger.INTERVAL),
+            decision,
+        )
+    }
+
+    @Test
     fun `missing usage access makes daily unavailable and otherwise allows`() {
         val decision = engine.decide(
             input(

@@ -95,12 +95,14 @@ abstract class TaskGrantDao {
 
     @Query(
         "UPDATE gate_cycles SET used_seconds = 0, pending_task_id = NULL, " +
+            "entry_cooldown_until_epoch_millis = :entryCooldownUntilEpochMillis, " +
             "updated_at_epoch_millis = :updatedAtEpochMillis " +
             "WHERE id = :cycleId AND pending_task_id = :taskId",
     )
     protected abstract suspend fun resetCycle(
         cycleId: String,
         taskId: String,
+        entryCooldownUntilEpochMillis: Long,
         updatedAtEpochMillis: Long,
     ): Int
 
@@ -126,7 +128,7 @@ abstract class TaskGrantDao {
         localDate: String,
         cycleId: String,
         updatedAtEpochMillis: Long,
-        entryCooldownUntilEpochMillis: Long?,
+        entryCooldownUntilEpochMillis: Long,
     ): Boolean {
         val task = getUnsolvedTask(taskId) ?: return false
         val cycle = getCycle(cycleId) ?: return false
@@ -140,13 +142,16 @@ abstract class TaskGrantDao {
             grantEntryCooldown(
                 cycleId = cycleId,
                 taskId = taskId,
-                entryCooldownUntilEpochMillis = requireNotNull(entryCooldownUntilEpochMillis) {
-                    "Entry task grant requires a cooldown deadline"
-                },
+                entryCooldownUntilEpochMillis = entryCooldownUntilEpochMillis,
                 updatedAtEpochMillis = updatedAtEpochMillis,
             )
         } else {
-            resetCycle(cycleId, taskId, updatedAtEpochMillis)
+            resetCycle(
+                cycleId = cycleId,
+                taskId = taskId,
+                entryCooldownUntilEpochMillis = entryCooldownUntilEpochMillis,
+                updatedAtEpochMillis = updatedAtEpochMillis,
+            )
         }
         check(cycleUpdated == 1) { "Task grant lost the gate cycle" }
         check(deleteSolved(taskId) == 1) { "Task grant could not remove the solved task" }

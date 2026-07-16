@@ -19,12 +19,12 @@ class BlockingOverlayScreenTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun taskGateKeepsExitVisibleAndCheckDisabledForBlankAnswer() {
+    fun taskGateKeepsSolveLaterVisibleAndCheckDisabledForBlankAnswer() {
         var lastAction: BlockingOverlayAction? = null
         composeRule.setOverlay(taskOverlay(), onAction = { lastAction = it })
 
         composeRule.onNodeWithText("Проверить").assertIsNotEnabled()
-        composeRule.onNodeWithText("Выйти из YouTube").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("Решить позже").assertIsDisplayed().performClick()
         composeRule.onNodeWithText("Emergency Stop").assertIsDisplayed()
         composeRule.runOnIdle {
             check(lastAction == BlockingOverlayAction.ExitYouTube)
@@ -67,7 +67,7 @@ class BlockingOverlayScreenTest {
 
         composeRule.onNodeWithText("Дневной лимит YouTube исчерпан").assertIsDisplayed()
         composeRule.onNodeWithText("Сегодня: 45 из 45 минут").assertIsDisplayed()
-        composeRule.onNodeWithText("Выйти из YouTube").assertIsDisplayed()
+        composeRule.onNodeWithText("На главный экран").assertIsDisplayed()
         composeRule.onNodeWithText("Проверить").assertDoesNotExist()
         composeRule.onNodeWithText("Другой пример").assertDoesNotExist()
     }
@@ -94,7 +94,7 @@ class BlockingOverlayScreenTest {
     }
 
     @Test
-    fun exitAndEmergencyRemainReachableAtTwoHundredPercentFontScale() {
+    fun solveLaterAndEmergencyRemainReachableAtTwoHundredPercentFontScale() {
         composeRule.setContent {
             val currentDensity = LocalDensity.current
             CompositionLocalProvider(
@@ -109,8 +109,25 @@ class BlockingOverlayScreenTest {
             }
         }
 
-        composeRule.onNodeWithText("Выйти из YouTube").assertIsDisplayed()
+        composeRule.onNodeWithText("Решить позже").assertIsDisplayed()
         composeRule.onNodeWithText("Emergency Stop").assertIsDisplayed()
+    }
+
+    @Test
+    fun solvedTaskOffersExplicitYouTubeLaunch() {
+        var lastAction: BlockingOverlayAction? = null
+        composeRule.setOverlay(
+            taskOverlay().copy(
+                enforcement = task().copy(answerStatus = TaskAnswerStatus.CORRECT),
+            ),
+            onAction = { lastAction = it },
+        )
+
+        composeRule.onNodeWithText("Открыть YouTube").performClick()
+
+        composeRule.runOnIdle {
+            check(lastAction == BlockingOverlayAction.OpenYouTube)
+        }
     }
 
     private fun androidx.compose.ui.test.junit4.ComposeContentTestRule.setOverlay(
