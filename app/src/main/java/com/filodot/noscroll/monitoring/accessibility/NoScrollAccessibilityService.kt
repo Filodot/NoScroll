@@ -12,7 +12,6 @@ import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
-import com.filodot.noscroll.BlockingActivity
 import com.filodot.noscroll.NoScrollApplication
 import com.filodot.noscroll.core.contracts.AccessibilityEventSource
 import com.filodot.noscroll.core.contracts.DeviceStateSource
@@ -22,6 +21,10 @@ import com.filodot.noscroll.core.model.DeviceState
 import com.filodot.noscroll.core.model.WindowSnapshot
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 
 /**
  * Package-scoped Android adapter. It does not detect Shorts, count time, enforce policy, or draw UI.
@@ -47,7 +50,9 @@ class NoScrollAccessibilityService :
             if (intent?.action in SCREEN_STATE_ACTIONS) controller.onScreenStateChanged()
         }
     }
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var screenReceiverRegistered = false
+    private var blockingOverlay: AccessibilityBlockingOverlay? = null
 
     override val events: Flow<AccessibilityWindowEvent>
         get() = controller.events
@@ -61,12 +66,19 @@ class NoScrollAccessibilityService :
         controller.onServiceConnected()
         runtime()?.let { runtime ->
             runtime.systemAccess.refresh()
-            runtime.monitoring.attach(this) { BlockingActivity.start(this) }
+            runtime.monitoring.attach(this)
+            blockingOverlay?.stop()
+            blockingOverlay = AccessibilityBlockingOverlay(
+                service = this,
+                monitoring = runtime.monitoring,
+                scope = serviceScope,
+            ).also(AccessibilityBlockingOverlay::start)
         }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
+        if (blockingOverlay?.isShowing == true) return
         controller.onAccessibilityEvent(
             packageName = event.packageName,
             eventType = event.eventType,
@@ -76,18 +88,19 @@ class NoScrollAccessibilityService :
 
     override fun onInterrupt() {
         controller.onServiceInterrupted()
-        runtime()?.monitoring?.detach()
+        stopRuntimeConnection()
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
         controller.onServiceInterrupted()
-        runtime()?.monitoring?.detach()
+        stopRuntimeConnection()
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
         controller.onServiceInterrupted()
-        runtime()?.monitoring?.detach()
+        stopRuntimeConnection()
+        serviceScope.cancel()
         unregisterScreenReceiverIfNeeded()
         super.onDestroy()
     }
@@ -137,6 +150,12 @@ class NoScrollAccessibilityService :
     }
 
     private fun runtime() = (application as? NoScrollApplication)?.runtime
+
+    private fun stopRuntimeConnection() {
+        blockingOverlay?.stop()
+        blockingOverlay = null
+        runtime()?.monitoring?.detach()
+    }
 
     companion object {
         private val SCREEN_STATE_ACTIONS = setOf(

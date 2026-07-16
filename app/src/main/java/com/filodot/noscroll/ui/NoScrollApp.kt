@@ -505,6 +505,7 @@ private fun buildSettingsState(
     youtubeVersionLabel = access.youtubeVersionName,
     diagnostics = RedactedDiagnosticsUiState(
         detectorStatus = when {
+            !diagnostics.overlayAvailable -> DetectorUiStatus.ERROR
             !access.accessibilityGranted -> DetectorUiStatus.INACTIVE
             diagnostics.detectorState == ShortsDetectionState.UNKNOWN ->
                 DetectorUiStatus.UNKNOWN_LAYOUT
@@ -513,10 +514,14 @@ private fun buildSettingsState(
         },
         lastRecognitionLabel = diagnostics.lastRecognitionAt?.atZone(ZoneId.systemDefault())
             ?.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)),
-        lastResultCode = when (diagnostics.detectorState) {
-            ShortsDetectionState.SHORTS_CONFIRMED -> DiagnosticResultCode.SHORTS_CONFIRMED
-            ShortsDetectionState.NOT_SHORTS -> DiagnosticResultCode.NON_SHORTS_CONFIRMED
-            ShortsDetectionState.UNKNOWN -> DiagnosticResultCode.UNKNOWN
+        lastResultCode = if (!diagnostics.overlayAvailable) {
+            DiagnosticResultCode.ACCESS_UNAVAILABLE
+        } else {
+            when (diagnostics.detectorState) {
+                ShortsDetectionState.SHORTS_CONFIRMED -> DiagnosticResultCode.SHORTS_CONFIRMED
+                ShortsDetectionState.NOT_SHORTS -> DiagnosticResultCode.NON_SHORTS_CONFIRMED
+                ShortsDetectionState.UNKNOWN -> DiagnosticResultCode.UNKNOWN
+            }
         },
         unknownCount = diagnostics.unknownCount,
         rulesVersion = diagnostics.rulesVersion,

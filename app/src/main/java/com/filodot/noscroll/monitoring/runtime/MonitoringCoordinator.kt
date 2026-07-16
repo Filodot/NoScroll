@@ -53,6 +53,7 @@ data class MonitoringDiagnostics(
     val lastRecognitionAt: Instant? = null,
     val unknownCount: Int = 0,
     val rulesVersion: Int = 1,
+    val overlayAvailable: Boolean = true,
 )
 
 class MonitoringCoordinator(
@@ -89,7 +90,6 @@ class MonitoringCoordinator(
     private var lastTickElapsedMillis: Long? = null
     private var youtubeRemainderMillis = 0L
     private var shortsRemainderMillis = 0L
-    private var launchBlocker: (() -> Unit)? = null
     private var emergencyOverrideActive = false
     private var ignoreTaskGateUntilElapsedMillis = 0L
 
@@ -97,12 +97,12 @@ class MonitoringCoordinator(
     val diagnostics: StateFlow<MonitoringDiagnostics> = mutableDiagnostics.asStateFlow()
     val isReady: StateFlow<Boolean> = ready
 
-    fun attach(
-        service: NoScrollAccessibilityService,
-        launchBlockingActivity: () -> Unit,
-    ) {
+    fun reportOverlayAvailability(available: Boolean) {
+        mutableDiagnostics.value = mutableDiagnostics.value.copy(overlayAvailable = available)
+    }
+
+    fun attach(service: NoScrollAccessibilityService) {
         sessionJob?.cancel()
-        launchBlocker = launchBlockingActivity
         lastTickElapsedMillis = null
         sessionJob = scope.launch {
             ready.first { it }
@@ -148,7 +148,7 @@ class MonitoringCoordinator(
     fun detach() {
         sessionJob?.cancel()
         sessionJob = null
-        launchBlocker = null
+        mutableEnforcement.value = null
         latestDeviceState = DeviceState(false, false, null)
         latestDetectionState = ShortsDetectionState.UNKNOWN
         lastTickElapsedMillis = null
@@ -159,7 +159,11 @@ class MonitoringCoordinator(
         if (task == null || task.id != taskId || task.solved) return@withLock false
         val parsed = answer.trim().toIntOrNull()
         if (parsed != task.expectedAnswer) {
-            taskRepository.save(task.copy(wrongAttempts = task.wrongAttempts.saturatingIncrement()))
+            val updated = task.copy(wrongAttempts = task.wrongAttempts.saturatingIncrement())
+            taskRepository.save(updated)
+            mutableEnforcement.value = updated.toUi(
+                settingsRepository.settings.value.shortsIntervalMinutes,
+            )
             return@withLock false
         }
 
@@ -242,7 +246,8 @@ class MonitoringCoordinator(
         val today = now.atZone(zoneId).toLocalDate()
         var usage = usageRepository.dailyUsage.value.forDate(today, now)
         var cycle = usageRepository.gateCycle.value.forDate(today, now)
-        val youtubeActive = latestDeviceState.screenInteractive &&
+        val youtubeActive = mutableEnforcement.value == null &&
+            latestDeviceState.screenInteractive &&
             latestDeviceState.deviceUnlocked &&
             latestDeviceState.foregroundPackage == AccessibilityAdapterController.YOUTUBE_PACKAGE_NAME
         val shortsActive = youtubeActive && latestDetectionState == ShortsDetectionState.SHORTS_CONFIRMED
@@ -382,7 +387,6 @@ class MonitoringCoordinator(
 
     private fun showEnforcement(state: EnforcementUiState) {
         mutableEnforcement.value = state
-        launchBlocker?.invoke()
     }
 
     private suspend fun reconcileDailyUsage() {

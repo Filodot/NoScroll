@@ -28,13 +28,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity
-            android:name=".BlockingActivity"
-            android:excludeFromRecents="true"
-            android:exported="false"
-            android:launchMode="singleTask"
-            android:theme="@style/Theme.NoScroll" />
-
         <service
             android:name=".monitoring.accessibility.NoScrollAccessibilityService"
             android:exported="true"
