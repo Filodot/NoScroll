@@ -11,7 +11,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             NoScrollTheme {
-                NoScrollApp()
+                NoScrollApp(graph = (application as NoScrollApplication).runtime.appGraph)
             }
         }
     }

@@ -12,6 +12,8 @@ import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
+import com.filodot.noscroll.BlockingActivity
+import com.filodot.noscroll.NoScrollApplication
 import com.filodot.noscroll.core.contracts.AccessibilityEventSource
 import com.filodot.noscroll.core.contracts.DeviceStateSource
 import com.filodot.noscroll.core.contracts.WindowSnapshotProvider
@@ -57,6 +59,10 @@ class NoScrollAccessibilityService :
         super.onServiceConnected()
         registerScreenReceiverIfNeeded()
         controller.onServiceConnected()
+        runtime()?.let { runtime ->
+            runtime.systemAccess.refresh()
+            runtime.monitoring.attach(this) { BlockingActivity.start(this) }
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -70,15 +76,18 @@ class NoScrollAccessibilityService :
 
     override fun onInterrupt() {
         controller.onServiceInterrupted()
+        runtime()?.monitoring?.detach()
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
         controller.onServiceInterrupted()
+        runtime()?.monitoring?.detach()
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
         controller.onServiceInterrupted()
+        runtime()?.monitoring?.detach()
         unregisterScreenReceiverIfNeeded()
         super.onDestroy()
     }
@@ -126,6 +135,8 @@ class NoScrollAccessibilityService :
             screenReceiverRegistered = false
         }
     }
+
+    private fun runtime() = (application as? NoScrollApplication)?.runtime
 
     companion object {
         private val SCREEN_STATE_ACTIONS = setOf(

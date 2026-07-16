@@ -19,9 +19,12 @@ import java.time.Instant
 import java.time.LocalDate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 
 class RoomUsageRepository(
@@ -31,13 +34,20 @@ class RoomUsageRepository(
     initialDailyUsage: DailyUsage,
     initialGateCycle: GateCycle,
 ) : UsageRepository {
+    private val mutableDailyInitialized = MutableStateFlow(false)
+    private val mutableGateInitialized = MutableStateFlow(false)
+    val dailyInitialized: StateFlow<Boolean> = mutableDailyInitialized.asStateFlow()
+    val gateInitialized: StateFlow<Boolean> = mutableGateInitialized.asStateFlow()
+
     override val dailyUsage: StateFlow<DailyUsage> = dailyUsageDao.observeLatest()
         .map { entity -> entity?.toModel() ?: initialDailyUsage }
+        .onEach { mutableDailyInitialized.value = true }
         .stateIn(scope, SharingStarted.Eagerly, initialDailyUsage)
 
     override val gateCycle: StateFlow<GateCycle> = gateCycleDao
         .observe(GateCycle.CURRENT_GATE_CYCLE_ID)
         .map { entity -> entity?.toModel() ?: initialGateCycle }
+        .onEach { mutableGateInitialized.value = true }
         .stateIn(scope, SharingStarted.Eagerly, initialGateCycle)
 
     override suspend fun saveDailyUsage(usage: DailyUsage) {
@@ -53,8 +63,12 @@ class RoomTaskRepository(
     private val dao: PendingTaskDao,
     scope: CoroutineScope,
 ) : TaskRepository {
+    private val mutableInitialized = MutableStateFlow(false)
+    val initialized: StateFlow<Boolean> = mutableInitialized.asStateFlow()
+
     override val pendingTask: StateFlow<PendingTask?> = dao.observePending()
         .map { entity -> entity?.toModel() }
+        .onEach { mutableInitialized.value = true }
         .stateIn(scope, SharingStarted.Eagerly, null)
 
     override suspend fun save(task: PendingTask) {
@@ -70,8 +84,12 @@ class RoomEmergencyRepository(
     private val dao: EmergencyEventDao,
     scope: CoroutineScope,
 ) : EmergencyRepository {
+    private val mutableInitialized = MutableStateFlow(false)
+    val initialized: StateFlow<Boolean> = mutableInitialized.asStateFlow()
+
     override val state: StateFlow<EmergencyState> = dao.observeActive()
         .map { entity -> EmergencyState(entity?.toModel()) }
+        .onEach { mutableInitialized.value = true }
         .stateIn(scope, SharingStarted.Eagerly, EmergencyState())
 
     override val history: Flow<List<EmergencyEvent>> = dao.observeHistory()

@@ -18,8 +18,12 @@ import com.filodot.noscroll.feature.settings.DiagnosticResultCode
 import com.filodot.noscroll.feature.settings.RedactedDiagnosticsUiState
 import com.filodot.noscroll.feature.settings.SettingsUiState
 import com.filodot.noscroll.feature.settings.SystemAccessUiStatus
+import com.filodot.noscroll.monitoring.runtime.MonitoringCoordinator
+import com.filodot.noscroll.platform.AndroidSystemAccess
 import java.time.Instant
 import java.time.LocalDate
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 data class NoScrollAppGraph(
     val settingsRepository: SettingsRepository,
@@ -29,6 +33,9 @@ data class NoScrollAppGraph(
     val dashboardState: DashboardUiState,
     val settingsState: SettingsUiState,
     val historyState: EmergencyHistoryUiState,
+    val settingsReady: StateFlow<Boolean> = MutableStateFlow(true),
+    val systemAccess: AndroidSystemAccess? = null,
+    val monitoring: MonitoringCoordinator? = null,
 ) {
     companion object {
         fun fake(onboardingCompleted: Boolean = false): NoScrollAppGraph {

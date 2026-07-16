@@ -23,7 +23,7 @@ import org.xmlpull.v1.XmlPullParser
 @Config(sdk = [34])
 class AccessibilityServiceConfigurationTest {
     @Test
-    fun `debug manifest registers a permission-protected service with metadata`() {
+    fun `manifest registers a permission-protected service with metadata`() {
         val context = RuntimeEnvironment.getApplication()
         val component = ComponentName(context, NoScrollAccessibilityService::class.java)
         @Suppress("DEPRECATION")
@@ -39,7 +39,7 @@ class AccessibilityServiceConfigurationTest {
     }
 
     @Test
-    fun `metadata is scoped to YouTube and requests only required capabilities`() {
+    fun `metadata requests only required capabilities`() {
         val parser = RuntimeEnvironment.getApplication().resources
             .getXml(R.xml.noscroll_accessibility_service)
         while (parser.eventType != XmlPullParser.START_TAG) parser.next()
@@ -51,10 +51,7 @@ class AccessibilityServiceConfigurationTest {
             },
             eventTypes,
         )
-        assertEquals(
-            AccessibilityAdapterController.YOUTUBE_PACKAGE_NAME,
-            parser.getAttributeValue(ANDROID_NAMESPACE, "packageNames"),
-        )
+        assertEquals(null, parser.getAttributeValue(ANDROID_NAMESPACE, "packageNames"))
         assertEquals(
             AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS,
             parser.getAttributeIntValue(ANDROID_NAMESPACE, "accessibilityFlags", 0),
@@ -65,13 +62,13 @@ class AccessibilityServiceConfigurationTest {
     }
 
     @Test
-    fun `service registration is debug only`() {
+    fun `service registration is included in production manifest`() {
         val mainManifest = projectFile("app/src/main/AndroidManifest.xml").readText()
         val debugManifest = projectFile("app/src/debug/AndroidManifest.xml").readText()
 
-        assertFalse(mainManifest.contains("NoScrollAccessibilityService"))
-        assertTrue(debugManifest.contains("NoScrollAccessibilityService"))
-        assertTrue(debugManifest.contains("android.permission.BIND_ACCESSIBILITY_SERVICE"))
+        assertTrue(mainManifest.contains("NoScrollAccessibilityService"))
+        assertTrue(mainManifest.contains("android.permission.BIND_ACCESSIBILITY_SERVICE"))
+        assertFalse(debugManifest.contains("NoScrollAccessibilityService"))
     }
 
     @Test

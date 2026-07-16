@@ -53,8 +53,12 @@ internal class AccessibilityAdapterController(
         elapsedRealtimeMillis: Long,
     ): Boolean {
         if (!connected) return false
-        if (packageName?.contentEquals(YOUTUBE_PACKAGE_NAME) != true) return false
         if (eventType !in SUPPORTED_EVENT_TYPES) return false
+        if (packageName?.contentEquals(YOUTUBE_PACKAGE_NAME) != true) {
+            coalescer.cancelAndReset()
+            updateDeviceState(foregroundPackage = null)
+            return false
+        }
 
         val sample = updateDeviceState(foregroundPackage = YOUTUBE_PACKAGE_NAME)
         if (!sample.screenInteractive || !sample.deviceUnlocked) {
