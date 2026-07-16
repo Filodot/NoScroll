@@ -2,6 +2,8 @@ package com.filodot.noscroll.core.tasks
 
 import com.filodot.noscroll.core.model.ArithmeticOperation
 import com.filodot.noscroll.core.model.PendingTask
+import com.filodot.noscroll.core.model.TaskDifficulty
+import com.filodot.noscroll.core.model.TaskTrigger
 import com.filodot.noscroll.core.testing.FakeWallClock
 import java.time.Instant
 import kotlin.random.Random
@@ -56,6 +58,21 @@ class LocalArithmeticTaskEngineTest {
     }
 
     @Test
+    fun `easy and hard profiles use distinct ranges and retain generic metadata`() {
+        val easy = engine(seed = 7).requireTask(TaskDifficulty.EASY, TaskTrigger.ENTRY)
+        val hard = engine(seed = 7).requireTask(TaskDifficulty.HARD, TaskTrigger.INTERVAL)
+
+        assertEquals(TaskDifficulty.EASY, easy.difficulty)
+        assertEquals(TaskTrigger.ENTRY, easy.trigger)
+        assertEquals(TaskDifficulty.HARD, hard.difficulty)
+        assertEquals(TaskTrigger.INTERVAL, hard.trigger)
+        assertTrue(easy.leftOperand <= 20)
+        assertTrue(easy.rightOperand <= 20)
+        assertTrue(hard.leftOperand >= 10)
+        assertTrue(hard.rightOperand >= 10)
+    }
+
+    @Test
     fun `leading zero answer is normalized and accepted`() {
         val engine = engine(initialTask = task(expectedAnswer = 56))
 
@@ -103,6 +120,8 @@ class LocalArithmeticTaskEngineTest {
         assertNotEquals(original.id, result.task.id)
         assertEquals(0, result.task.wrongAttempts)
         assertFalse(result.task.solved)
+        assertEquals(original.difficulty, result.task.difficulty)
+        assertEquals(original.trigger, result.task.trigger)
         assertEquals(result.task, engine.state().pendingTask)
     }
 

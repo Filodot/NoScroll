@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Upsert
+import com.filodot.noscroll.core.model.TaskTrigger
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -103,6 +104,17 @@ abstract class TaskGrantDao {
         updatedAtEpochMillis: Long,
     ): Int
 
+    @Query(
+        "UPDATE gate_cycles SET pending_task_id = NULL, " +
+            "updated_at_epoch_millis = :updatedAtEpochMillis " +
+            "WHERE id = :cycleId AND pending_task_id = :taskId",
+    )
+    protected abstract suspend fun clearEntryTask(
+        cycleId: String,
+        taskId: String,
+        updatedAtEpochMillis: Long,
+    ): Int
+
     @Query("DELETE FROM pending_tasks WHERE id = :taskId AND solved = 1")
     protected abstract suspend fun deleteSolved(taskId: String): Int
 
@@ -121,9 +133,12 @@ abstract class TaskGrantDao {
         check(incrementTasksSolved(localDate, updatedAtEpochMillis) == 1) {
             "Task grant lost the daily aggregate"
         }
-        check(resetCycle(cycleId, taskId, updatedAtEpochMillis) == 1) {
-            "Task grant lost the gate cycle"
+        val cycleUpdated = if (task.trigger == TaskTrigger.ENTRY.name) {
+            clearEntryTask(cycleId, taskId, updatedAtEpochMillis)
+        } else {
+            resetCycle(cycleId, taskId, updatedAtEpochMillis)
         }
+        check(cycleUpdated == 1) { "Task grant lost the gate cycle" }
         check(deleteSolved(taskId) == 1) { "Task grant could not remove the solved task" }
         return true
     }

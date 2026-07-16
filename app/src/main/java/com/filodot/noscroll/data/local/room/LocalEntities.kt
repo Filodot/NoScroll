@@ -37,6 +37,10 @@ data class GateCycleEntity(
     val usedSeconds: Long,
     @ColumnInfo(name = "pending_task_id")
     val pendingTaskId: String?,
+    @ColumnInfo(name = "interval_block_streak", defaultValue = "0")
+    val intervalBlockStreak: Int,
+    @ColumnInfo(name = "last_interval_block_at_epoch_millis")
+    val lastIntervalBlockAtEpochMillis: Long?,
     @ColumnInfo(name = "updated_at_epoch_millis")
     val updatedAtEpochMillis: Long,
 )
@@ -57,6 +61,10 @@ data class PendingTaskEntity(
     @ColumnInfo(name = "wrong_attempts")
     val wrongAttempts: Int,
     val solved: Boolean,
+    @ColumnInfo(defaultValue = "'MEDIUM'")
+    val difficulty: String,
+    @ColumnInfo(defaultValue = "'INTERVAL'")
+    val trigger: String,
 )
 
 @Entity(tableName = "emergency_events")

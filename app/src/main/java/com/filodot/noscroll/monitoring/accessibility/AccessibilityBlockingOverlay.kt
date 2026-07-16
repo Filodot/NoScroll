@@ -8,6 +8,8 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.SystemClock
+import android.provider.Settings
 import android.text.InputFilter
 import android.text.InputType
 import android.view.Gravity
@@ -15,9 +17,9 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.view.accessibility.AccessibilityEvent
 import android.widget.Button
 import android.widget.EditText
-import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -26,6 +28,8 @@ import androidx.core.widget.doAfterTextChanged
 import com.filodot.noscroll.core.emergency.MAX_REASON_LENGTH
 import com.filodot.noscroll.core.emergency.MIN_REASON_LENGTH
 import com.filodot.noscroll.core.model.EmergencyActivationSource
+import com.filodot.noscroll.core.model.TaskDifficulty
+import com.filodot.noscroll.core.model.TaskTrigger
 import com.filodot.noscroll.feature.overlay.EnforcementUiState
 import com.filodot.noscroll.monitoring.runtime.MonitoringCoordinator
 import kotlinx.coroutines.CoroutineScope
@@ -38,7 +42,7 @@ internal object AccessibilityOverlayWindowPolicy {
         WindowManager.LayoutParams.MATCH_PARENT,
         WindowManager.LayoutParams.MATCH_PARENT,
         WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+        0,
         PixelFormat.OPAQUE,
     ).apply {
         gravity = Gravity.TOP or Gravity.START
@@ -58,9 +62,28 @@ internal class AccessibilityBlockingOverlay(
     private var currentEnforcement: EnforcementUiState? = null
     private var emergencyFormVisible = false
     private var emergencyReason = ""
+    private var playbackEjectedForGate = false
+    private var ignoreExternalEventsUntilElapsedMillis = 0L
+    private val inputMethodPackage: String? by lazy {
+        Settings.Secure.getString(
+            service.contentResolver,
+            Settings.Secure.DEFAULT_INPUT_METHOD,
+        )?.substringBefore('/')
+    }
 
     val isShowing: Boolean
         get() = rootView != null
+
+    fun shouldIgnoreAccessibilityEvent(event: AccessibilityEvent): Boolean {
+        if (!isShowing) return false
+        if (SystemClock.elapsedRealtime() < ignoreExternalEventsUntilElapsedMillis) return true
+        val eventPackage = event.packageName?.toString()
+        return eventPackage == service.packageName ||
+            eventPackage == inputMethodPackage ||
+            eventPackage == AccessibilityAdapterController.YOUTUBE_PACKAGE_NAME ||
+            eventPackage == SYSTEM_UI_PACKAGE &&
+            event.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED
+    }
 
     fun start() {
         collectionJob?.cancel()
@@ -68,6 +91,7 @@ internal class AccessibilityBlockingOverlay(
             monitoring.enforcement.collectLatest { enforcement ->
                 currentEnforcement = enforcement
                 if (enforcement == null) {
+                    playbackEjectedForGate = false
                     emergencyFormVisible = false
                     emergencyReason = ""
                     hide()
@@ -88,6 +112,13 @@ internal class AccessibilityBlockingOverlay(
     }
 
     private fun render(enforcement: EnforcementUiState) {
+        if (enforcement is EnforcementUiState.TaskGate && !playbackEjectedForGate) {
+            playbackEjectedForGate = true
+            ignoreExternalEventsUntilElapsedMillis = SystemClock.elapsedRealtime() +
+                PLAYBACK_EJECTION_EVENT_SUPPRESSION_MILLIS
+            service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+            monitoring.onShortsPlaybackEjected()
+        }
         val nextView = if (emergencyFormVisible) {
             buildEmergencyForm(enforcement)
         } else {
@@ -141,8 +172,25 @@ internal class AccessibilityBlockingOverlay(
         )
 
     private fun LinearLayout.addTaskContent(task: EnforcementUiState.TaskGate) {
-        addView(title("Пора сделать паузу"))
-        addView(body("Решите пример, чтобы открыть Shorts ещё на ${task.grantMinutes} минут"))
+        addView(
+            title(
+                if (task.trigger == TaskTrigger.ENTRY) {
+                    "Вход в Shorts"
+                } else {
+                    "Пора сделать паузу"
+                },
+            ),
+        )
+        addView(body(task.difficulty.label()))
+        addView(
+            body(
+                if (task.trigger == TaskTrigger.ENTRY) {
+                    "Решите пример — это плата за вход в новую сессию Shorts"
+                } else {
+                    "Решите пример, чтобы открыть Shorts ещё на ${task.grantMinutes} минут"
+                },
+            ),
+        )
         addView(spacer(28))
         addView(title(task.visualExpression, sizeSp = 40f).apply {
             contentDescription = task.spokenExpression
@@ -380,8 +428,16 @@ internal class AccessibilityBlockingOverlay(
         is EnforcementUiState.DailyLimit -> EmergencyActivationSource.DAILY_LIMIT
     }
 
+    private fun TaskDifficulty.label(): String = when (this) {
+        TaskDifficulty.EASY -> "Лёгкая задача"
+        TaskDifficulty.MEDIUM -> "Средняя задача"
+        TaskDifficulty.HARD -> "Сложная задача"
+    }
+
     companion object {
         private const val WRONG_ATTEMPTS_FOR_REPLACEMENT = 3
+        private const val PLAYBACK_EJECTION_EVENT_SUPPRESSION_MILLIS = 1_500L
+        private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
         private val BACKGROUND_COLOR = Color.rgb(17, 14, 9)
         private val SURFACE_COLOR = Color.rgb(50, 46, 55)
         private val PRIMARY_COLOR = Color.rgb(255, 198, 48)

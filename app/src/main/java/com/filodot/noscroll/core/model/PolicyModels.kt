@@ -14,6 +14,7 @@ data class PolicyInput(
     val emergencyState: EmergencyState,
     val detectorState: ShortsDetectionState,
     val youtubeForeground: Boolean,
+    val entryGatePaid: Boolean = true,
 )
 
 sealed interface PolicyDecision {
@@ -33,6 +34,7 @@ sealed interface PolicyDecision {
 
     data class TaskGateRequired(
         val pendingTaskId: String?,
+        val trigger: TaskTrigger = TaskTrigger.INTERVAL,
     ) : PolicyDecision
 }
 

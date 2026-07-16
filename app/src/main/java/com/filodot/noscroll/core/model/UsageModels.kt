@@ -21,6 +21,8 @@ data class GateCycle(
     val usedSeconds: Long = 0,
     val pendingTaskId: String? = null,
     val updatedAt: Instant,
+    val intervalBlockStreak: Int = 0,
+    val lastIntervalBlockAt: Instant? = null,
 ) {
     companion object {
         const val CURRENT_GATE_CYCLE_ID = "current"

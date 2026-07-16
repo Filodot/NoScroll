@@ -22,6 +22,7 @@ class AccessibilityOverlayWindowPolicyTest {
         assertEquals(PixelFormat.OPAQUE, params.format)
         assertFalse(params.flags.hasFlag(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE))
         assertFalse(params.flags.hasFlag(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE))
+        assertFalse(params.flags.hasFlag(WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN))
     }
 }
 

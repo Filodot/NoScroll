@@ -3,6 +3,8 @@ package com.filodot.noscroll.feature.overlay
 import com.filodot.noscroll.core.emergency.MAX_REASON_LENGTH
 import com.filodot.noscroll.core.emergency.MIN_REASON_LENGTH
 import com.filodot.noscroll.core.model.EmergencyActivationSource
+import com.filodot.noscroll.core.model.TaskDifficulty
+import com.filodot.noscroll.core.model.TaskTrigger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,6 +15,8 @@ sealed interface EnforcementUiState {
         val visualExpression: String,
         val spokenExpression: String,
         val grantMinutes: Int,
+        val difficulty: TaskDifficulty = TaskDifficulty.MEDIUM,
+        val trigger: TaskTrigger = TaskTrigger.INTERVAL,
         val answer: String = "",
         val wrongAttempts: Int = 0,
         val answerStatus: TaskAnswerStatus = TaskAnswerStatus.READY,

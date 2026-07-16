@@ -6,6 +6,8 @@ import com.filodot.noscroll.core.model.EmergencyActivationSource
 import com.filodot.noscroll.core.model.EmergencyEvent
 import com.filodot.noscroll.core.model.GateCycle
 import com.filodot.noscroll.core.model.PendingTask
+import com.filodot.noscroll.core.model.TaskDifficulty
+import com.filodot.noscroll.core.model.TaskTrigger
 import java.time.Instant
 import java.time.LocalDate
 
@@ -38,6 +40,8 @@ fun GateCycle.toEntity(): GateCycleEntity = GateCycleEntity(
     localDate = localDate.toString(),
     usedSeconds = usedSeconds,
     pendingTaskId = pendingTaskId,
+    intervalBlockStreak = intervalBlockStreak,
+    lastIntervalBlockAtEpochMillis = lastIntervalBlockAt?.toEpochMilli(),
     updatedAtEpochMillis = updatedAt.toEpochMilli(),
 )
 
@@ -46,6 +50,8 @@ fun GateCycleEntity.toModel(): GateCycle = GateCycle(
     localDate = LocalDate.parse(localDate),
     usedSeconds = usedSeconds,
     pendingTaskId = pendingTaskId,
+    intervalBlockStreak = intervalBlockStreak,
+    lastIntervalBlockAt = lastIntervalBlockAtEpochMillis?.let(Instant::ofEpochMilli),
     updatedAt = Instant.ofEpochMilli(updatedAtEpochMillis),
 )
 
@@ -58,6 +64,8 @@ fun PendingTask.toEntity(): PendingTaskEntity = PendingTaskEntity(
     createdAtEpochMillis = createdAt.toEpochMilli(),
     wrongAttempts = wrongAttempts,
     solved = solved,
+    difficulty = difficulty.name,
+    trigger = trigger.name,
 )
 
 fun PendingTaskEntity.toModel(): PendingTask = PendingTask(
@@ -69,6 +77,8 @@ fun PendingTaskEntity.toModel(): PendingTask = PendingTask(
     createdAt = Instant.ofEpochMilli(createdAtEpochMillis),
     wrongAttempts = wrongAttempts,
     solved = solved,
+    difficulty = enumValueOf<TaskDifficulty>(difficulty),
+    trigger = enumValueOf<TaskTrigger>(trigger),
 )
 
 fun EmergencyEvent.toEntity(): EmergencyEventEntity = EmergencyEventEntity(

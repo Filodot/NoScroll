@@ -3,6 +3,7 @@ package com.filodot.noscroll.core.policy
 import com.filodot.noscroll.core.model.PolicyDecision
 import com.filodot.noscroll.core.model.PolicyInput
 import com.filodot.noscroll.core.model.ShortsDetectionState
+import com.filodot.noscroll.core.model.TaskTrigger
 
 /**
  * Produces the single enforcement decision for the current immutable snapshot.
@@ -52,12 +53,27 @@ class PolicyEngine {
             input.detectorState == ShortsDetectionState.SHORTS_CONFIRMED
         ) {
             val pendingTaskId = input.pendingTask?.id ?: input.gateCycle.pendingTaskId
+            if (pendingTaskId != null) {
+                return PolicyDecision.TaskGateRequired(
+                    pendingTaskId = pendingTaskId,
+                    trigger = input.pendingTask?.trigger ?: TaskTrigger.INTERVAL,
+                )
+            }
+            if (!input.entryGatePaid) {
+                return PolicyDecision.TaskGateRequired(
+                    pendingTaskId = null,
+                    trigger = TaskTrigger.ENTRY,
+                )
+            }
             val shortsLimitSeconds = input.settings.shortsIntervalMinutes.toPositiveSeconds()
             val intervalReached = shortsLimitSeconds != null &&
                 input.gateCycle.usedSeconds >= shortsLimitSeconds
 
-            if (pendingTaskId != null || intervalReached) {
-                return PolicyDecision.TaskGateRequired(pendingTaskId)
+            if (intervalReached) {
+                return PolicyDecision.TaskGateRequired(
+                    pendingTaskId = null,
+                    trigger = TaskTrigger.INTERVAL,
+                )
             }
         }
 

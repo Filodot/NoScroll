@@ -49,6 +49,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.filodot.noscroll.core.model.TaskDifficulty
+import com.filodot.noscroll.core.model.TaskTrigger
 
 @Composable
 fun BlockingOverlayHost(
@@ -134,10 +136,26 @@ private fun TaskGateContent(
         if (task.answerStatus != TaskAnswerStatus.CORRECT) focusRequester.requestFocus()
     }
 
-    OverlayTitle("Пора сделать паузу")
+    OverlayTitle(
+        if (task.trigger == TaskTrigger.ENTRY) "Вход в Shorts" else "Пора сделать паузу",
+    )
     Spacer(Modifier.height(12.dp))
     Text(
-        text = "Решите пример, чтобы открыть Shorts ещё на ${task.grantMinutes} минут",
+        text = when (task.difficulty) {
+            TaskDifficulty.EASY -> "Лёгкая задача"
+            TaskDifficulty.MEDIUM -> "Средняя задача"
+            TaskDifficulty.HARD -> "Сложная задача"
+        },
+        color = MaterialTheme.colorScheme.primary,
+        style = MaterialTheme.typography.labelLarge,
+    )
+    Spacer(Modifier.height(8.dp))
+    Text(
+        text = if (task.trigger == TaskTrigger.ENTRY) {
+            "Решите пример — это плата за вход в новую сессию Shorts"
+        } else {
+            "Решите пример, чтобы открыть Shorts ещё на ${task.grantMinutes} минут"
+        },
         style = MaterialTheme.typography.bodyLarge,
     )
     Spacer(Modifier.height(32.dp))

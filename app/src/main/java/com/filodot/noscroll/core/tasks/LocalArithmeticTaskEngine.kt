@@ -3,6 +3,8 @@ package com.filodot.noscroll.core.tasks
 import com.filodot.noscroll.core.contracts.WallClock
 import com.filodot.noscroll.core.model.ArithmeticOperation
 import com.filodot.noscroll.core.model.PendingTask
+import com.filodot.noscroll.core.model.TaskDifficulty
+import com.filodot.noscroll.core.model.TaskTrigger
 import java.time.Instant
 import java.util.UUID
 import kotlin.math.max
@@ -67,9 +69,12 @@ class LocalArithmeticTaskEngine(
 
     /** Returns the restored pending task or creates exactly one new task. */
     @Synchronized
-    fun requireTask(): PendingTask {
+    fun requireTask(
+        difficulty: TaskDifficulty = TaskDifficulty.MEDIUM,
+        trigger: TaskTrigger = TaskTrigger.INTERVAL,
+    ): PendingTask {
         state.pendingTask?.let { return it }
-        return generateAndStoreTask()
+        return generateAndStoreTask(difficulty, trigger)
     }
 
     @Synchronized
@@ -105,7 +110,9 @@ class LocalArithmeticTaskEngine(
             )
         }
 
-        return TaskReplacementResult.Replaced(generateAndStoreTask())
+        return TaskReplacementResult.Replaced(
+            generateAndStoreTask(current.difficulty, current.trigger),
+        )
     }
 
     /** Clears only the matching solved task; an unsolved gate cannot be skipped through this API. */
@@ -120,18 +127,21 @@ class LocalArithmeticTaskEngine(
     @Synchronized
     fun state(): ArithmeticTaskState = state
 
-    private fun generateAndStoreTask(): PendingTask {
+    private fun generateAndStoreTask(
+        difficulty: TaskDifficulty,
+        trigger: TaskTrigger,
+    ): PendingTask {
         val recent = state.recentExamples.toSet()
         var selected: ArithmeticExample? = null
         for (attempt in 0 until MAX_RANDOM_ATTEMPTS) {
-            val candidate = randomExample()
+            val candidate = randomExample(difficulty)
             if (candidate !in recent) {
                 selected = candidate
                 break
             }
         }
 
-        val example = selected ?: firstAvailableExample(recent)
+        val example = selected ?: firstAvailableExample(recent, difficulty)
         val createdAt = wallClock.now()
         val task = PendingTask(
             id = idGenerator.create(createdAt),
@@ -140,6 +150,8 @@ class LocalArithmeticTaskEngine(
             rightOperand = example.rightOperand,
             expectedAnswer = example.expectedAnswer(),
             createdAt = createdAt,
+            difficulty = difficulty,
+            trigger = trigger,
         )
         state = state.copy(
             pendingTask = task,
@@ -148,17 +160,24 @@ class LocalArithmeticTaskEngine(
         return task
     }
 
-    private fun randomExample(): ArithmeticExample =
-        when (ArithmeticOperation.entries[random.nextInt(ArithmeticOperation.entries.size)]) {
+    private fun randomExample(difficulty: TaskDifficulty): ArithmeticExample {
+        val profile = ArithmeticDifficultyProfile.forDifficulty(difficulty)
+        return when (ArithmeticOperation.entries[random.nextInt(ArithmeticOperation.entries.size)]) {
             ArithmeticOperation.ADD -> ArithmeticExample(
                 operation = ArithmeticOperation.ADD,
-                leftOperand = random.nextInt(ADD_MIN, ADD_MAX_EXCLUSIVE),
-                rightOperand = random.nextInt(ADD_MIN, ADD_MAX_EXCLUSIVE),
+                leftOperand = random.nextInt(profile.addRange.first, profile.addRange.last + 1),
+                rightOperand = random.nextInt(profile.addRange.first, profile.addRange.last + 1),
             )
 
             ArithmeticOperation.SUBTRACT -> {
-                val first = random.nextInt(SUBTRACT_MIN, SUBTRACT_MAX_EXCLUSIVE)
-                val second = random.nextInt(SUBTRACT_MIN, SUBTRACT_MAX_EXCLUSIVE)
+                val first = random.nextInt(
+                    profile.subtractRange.first,
+                    profile.subtractRange.last + 1,
+                )
+                val second = random.nextInt(
+                    profile.subtractRange.first,
+                    profile.subtractRange.last + 1,
+                )
                 ArithmeticExample(
                     operation = ArithmeticOperation.SUBTRACT,
                     leftOperand = max(first, second),
@@ -168,17 +187,28 @@ class LocalArithmeticTaskEngine(
 
             ArithmeticOperation.MULTIPLY -> ArithmeticExample(
                 operation = ArithmeticOperation.MULTIPLY,
-                leftOperand = random.nextInt(MULTIPLY_MIN, MULTIPLY_MAX_EXCLUSIVE),
-                rightOperand = random.nextInt(MULTIPLY_MIN, MULTIPLY_MAX_EXCLUSIVE),
+                leftOperand = random.nextInt(
+                    profile.multiplyRange.first,
+                    profile.multiplyRange.last + 1,
+                ),
+                rightOperand = random.nextInt(
+                    profile.multiplyRange.first,
+                    profile.multiplyRange.last + 1,
+                ),
             )
         }
+    }
 
-    private fun firstAvailableExample(recent: Set<ArithmeticExample>): ArithmeticExample {
+    private fun firstAvailableExample(
+        recent: Set<ArithmeticExample>,
+        difficulty: TaskDifficulty,
+    ): ArithmeticExample {
+        val profile = ArithmeticDifficultyProfile.forDifficulty(difficulty)
         ArithmeticOperation.entries.forEach { operation ->
             when (operation) {
                 ArithmeticOperation.ADD -> {
-                    for (left in ADD_MIN until ADD_MAX_EXCLUSIVE) {
-                        for (right in ADD_MIN until ADD_MAX_EXCLUSIVE) {
+                    for (left in profile.addRange) {
+                        for (right in profile.addRange) {
                             ArithmeticExample(operation, left, right)
                                 .takeIf { it !in recent }
                                 ?.let { return it }
@@ -187,8 +217,8 @@ class LocalArithmeticTaskEngine(
                 }
 
                 ArithmeticOperation.SUBTRACT -> {
-                    for (left in SUBTRACT_MIN until SUBTRACT_MAX_EXCLUSIVE) {
-                        for (right in SUBTRACT_MIN..left) {
+                    for (left in profile.subtractRange) {
+                        for (right in profile.subtractRange.first..left) {
                             ArithmeticExample(operation, left, right)
                                 .takeIf { it !in recent }
                                 ?.let { return it }
@@ -197,8 +227,8 @@ class LocalArithmeticTaskEngine(
                 }
 
                 ArithmeticOperation.MULTIPLY -> {
-                    for (left in MULTIPLY_MIN until MULTIPLY_MAX_EXCLUSIVE) {
-                        for (right in MULTIPLY_MIN until MULTIPLY_MAX_EXCLUSIVE) {
+                    for (left in profile.multiplyRange) {
+                        for (right in profile.multiplyRange) {
                             ArithmeticExample(operation, left, right)
                                 .takeIf { it !in recent }
                                 ?.let { return it }
@@ -208,6 +238,35 @@ class LocalArithmeticTaskEngine(
             }
         }
         error("Arithmetic task space is unexpectedly exhausted")
+    }
+}
+
+private data class ArithmeticDifficultyProfile(
+    val addRange: IntRange,
+    val subtractRange: IntRange,
+    val multiplyRange: IntRange,
+) {
+    companion object {
+        fun forDifficulty(difficulty: TaskDifficulty): ArithmeticDifficultyProfile =
+            when (difficulty) {
+                TaskDifficulty.EASY -> ArithmeticDifficultyProfile(
+                    addRange = 1..20,
+                    subtractRange = 1..20,
+                    multiplyRange = 2..5,
+                )
+
+                TaskDifficulty.MEDIUM -> ArithmeticDifficultyProfile(
+                    addRange = 10..99,
+                    subtractRange = 10..99,
+                    multiplyRange = 2..9,
+                )
+
+                TaskDifficulty.HARD -> ArithmeticDifficultyProfile(
+                    addRange = 100..999,
+                    subtractRange = 100..999,
+                    multiplyRange = 10..29,
+                )
+            }
     }
 }
 
@@ -242,9 +301,3 @@ private fun Int.saturatingIncrement(): Int = if (this == Int.MAX_VALUE) this els
 private const val FAILURES_BEFORE_REPLACEMENT = 3
 private const val RECENT_EXAMPLE_LIMIT = 5
 private const val MAX_RANDOM_ATTEMPTS = 32
-private const val ADD_MIN = 10
-private const val ADD_MAX_EXCLUSIVE = 100
-private const val SUBTRACT_MIN = 10
-private const val SUBTRACT_MAX_EXCLUSIVE = 100
-private const val MULTIPLY_MIN = 2
-private const val MULTIPLY_MAX_EXCLUSIVE = 10

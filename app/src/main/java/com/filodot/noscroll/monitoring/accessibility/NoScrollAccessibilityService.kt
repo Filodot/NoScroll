@@ -78,7 +78,7 @@ class NoScrollAccessibilityService :
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
-        if (blockingOverlay?.isShowing == true) return
+        if (blockingOverlay?.shouldIgnoreAccessibilityEvent(event) == true) return
         controller.onAccessibilityEvent(
             packageName = event.packageName,
             eventType = event.eventType,

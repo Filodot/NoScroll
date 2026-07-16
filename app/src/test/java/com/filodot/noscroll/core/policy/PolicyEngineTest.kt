@@ -12,6 +12,7 @@ import com.filodot.noscroll.core.model.PolicyDecision
 import com.filodot.noscroll.core.model.PolicyInput
 import com.filodot.noscroll.core.model.ShortsDetectionState
 import com.filodot.noscroll.core.model.UserSettings
+import com.filodot.noscroll.core.model.TaskTrigger
 import java.time.Instant
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
@@ -132,6 +133,35 @@ class PolicyEngineTest {
         )
 
         assertEquals(PolicyDecision.TaskGateRequired(pendingTaskId = null), decision)
+    }
+
+    @Test
+    fun `unpaid entry requires an entry task before first Shorts interval`() {
+        val decision = engine.decide(
+            input(
+                entryGatePaid = false,
+                cycleSeconds = 0,
+                detectorState = ShortsDetectionState.SHORTS_CONFIRMED,
+            ),
+        )
+
+        assertEquals(
+            PolicyDecision.TaskGateRequired(null, TaskTrigger.ENTRY),
+            decision,
+        )
+    }
+
+    @Test
+    fun `paid entry allows Shorts until interval is reached`() {
+        val decision = engine.decide(
+            input(
+                entryGatePaid = true,
+                cycleSeconds = 0,
+                detectorState = ShortsDetectionState.SHORTS_CONFIRMED,
+            ),
+        )
+
+        assertEquals(PolicyDecision.Allow, decision)
     }
 
     @Test
@@ -360,6 +390,7 @@ class PolicyEngineTest {
         gateCyclePendingTaskId: String? = null,
         pendingTask: PendingTask? = null,
         detectorState: ShortsDetectionState = ShortsDetectionState.NOT_SHORTS,
+        entryGatePaid: Boolean = true,
     ): PolicyInput = PolicyInput(
         settings = settings.copy(emergencyActive = emergencyActive || settings.emergencyActive),
         permissions = PermissionState(
@@ -381,6 +412,7 @@ class PolicyEngineTest {
         emergencyState = emergencyState,
         detectorState = detectorState,
         youtubeForeground = youtubeForeground,
+        entryGatePaid = entryGatePaid,
     )
 
     private fun pendingTask(id: String) = PendingTask(

@@ -7,6 +7,8 @@ import com.filodot.noscroll.core.model.EmergencyActivationSource
 import com.filodot.noscroll.core.model.EmergencyEvent
 import com.filodot.noscroll.core.model.GateCycle
 import com.filodot.noscroll.core.model.PendingTask
+import com.filodot.noscroll.core.model.TaskDifficulty
+import com.filodot.noscroll.core.model.TaskTrigger
 import com.filodot.noscroll.data.local.repository.RoomEmergencyRepository
 import com.filodot.noscroll.data.local.repository.RoomTaskGrantTransaction
 import com.filodot.noscroll.data.local.repository.RoomTaskRepository
@@ -81,8 +83,13 @@ class RoomRepositoriesTest {
             taskExits = 1,
             lastUpdatedElapsedMillis = 9_876,
         )
-        val task = pendingTask("task-1", now)
-        val storedCycle = fallbackCycle.copy(usedSeconds = 299, pendingTaskId = task.id)
+        val task = pendingTask("task-1", now).copy(difficulty = TaskDifficulty.HARD)
+        val storedCycle = fallbackCycle.copy(
+            usedSeconds = 299,
+            pendingTaskId = task.id,
+            intervalBlockStreak = 2,
+            lastIntervalBlockAt = now.minusSeconds(60),
+        )
         val activeEmergency = emergency("emergency-1", now, deactivatedAt = null)
 
         usageRepository.saveDailyUsage(storedDaily)
@@ -168,6 +175,39 @@ class RoomRepositoriesTest {
         assertEquals(0, cycle.usedSeconds)
         assertNull(cycle.pendingTaskId)
         assertEquals(grantedAt, cycle.updatedAt)
+        assertNull(database.pendingTaskDao().get(task.id))
+    }
+
+    @Test
+    fun entryTaskGrantPreservesAccumulatedIntervalTime() = runBlocking {
+        val date = LocalDate.of(2026, 7, 14)
+        val createdAt = Instant.parse("2026-07-14T05:00:00Z")
+        val grantedAt = createdAt.plusSeconds(30)
+        val task = pendingTask("entry-task", createdAt).copy(
+            difficulty = TaskDifficulty.EASY,
+            trigger = TaskTrigger.ENTRY,
+        )
+        database.dailyUsageDao().upsert(dailyUsage(date, createdAt).toEntity())
+        database.pendingTaskDao().upsert(task.toEntity())
+        database.gateCycleDao().upsert(
+            gateCycle(date, createdAt).copy(
+                usedSeconds = 123,
+                pendingTaskId = task.id,
+                intervalBlockStreak = 2,
+                lastIntervalBlockAt = createdAt.minusSeconds(60),
+            ).toEntity(),
+        )
+
+        assertTrue(
+            RoomTaskGrantTransaction(database.taskGrantDao())
+                .grant(task.id, date, grantedAt),
+        )
+
+        val cycle = requireNotNull(database.gateCycleDao().get(GateCycle.CURRENT_GATE_CYCLE_ID))
+            .toModel()
+        assertEquals(123L, cycle.usedSeconds)
+        assertEquals(2, cycle.intervalBlockStreak)
+        assertNull(cycle.pendingTaskId)
         assertNull(database.pendingTaskDao().get(task.id))
     }
 
