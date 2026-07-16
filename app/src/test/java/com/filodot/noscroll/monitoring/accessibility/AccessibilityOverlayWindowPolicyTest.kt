@@ -4,6 +4,7 @@ import android.graphics.PixelFormat
 import android.view.WindowManager
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -23,6 +24,8 @@ class AccessibilityOverlayWindowPolicyTest {
         assertFalse(params.flags.hasFlag(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE))
         assertFalse(params.flags.hasFlag(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE))
         assertFalse(params.flags.hasFlag(WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN))
+        assertFalse(params.flags.hasFlag(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS))
+        assertTrue(params.flags.hasFlag(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL))
     }
 }
 

@@ -20,9 +20,13 @@ class ShortsEntryGate(
     }
 
     @Synchronized
-    fun onTaskSolved(elapsedMillis: Long) {
+    fun onTaskSolved(
+        elapsedMillis: Long,
+        validityMillis: Long = grantValidityMillis,
+    ) {
+        require(validityMillis > 0)
         sessionPaid = false
-        grantExpiresAtElapsedMillis = elapsedMillis.saturatingAdd(grantValidityMillis)
+        grantExpiresAtElapsedMillis = elapsedMillis.saturatingAdd(validityMillis)
         inactiveSinceElapsedMillis = null
     }
 

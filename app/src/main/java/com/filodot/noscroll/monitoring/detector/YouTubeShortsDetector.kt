@@ -73,6 +73,12 @@ class YouTubeShortsDetector(
         }
     }
 
+    /** Clears sticky exit debounce after the player or YouTube itself was left explicitly. */
+    @Synchronized
+    fun resetToNotShorts(elapsedMillis: Long) {
+        reset(ShortsDetectionState.NOT_SHORTS, elapsedMillis.coerceAtLeast(0L))
+    }
+
     private fun handlePositive(
         observation: Observation.Positive,
         capturedAtElapsedMillis: Long,
@@ -174,7 +180,8 @@ class YouTubeShortsDetector(
             snapshot.windowHeightPx != null &&
             snapshot.windowHeightPx > snapshot.windowWidthPx
         val verticalScrollEvent = snapshot.eventType == TYPE_VIEW_SCROLLED
-        val hasPrimaryShortsEvidence = strongPositive || verticalPager || actionStack || shortsLabel
+        val structuralShorts = verticalPager && actionStack
+        val hasPrimaryShortsEvidence = strongPositive || structuralShorts
 
         var score = 0f
         var independentSignals = 0
@@ -190,24 +197,22 @@ class YouTubeShortsDetector(
         }
         if (shortsLabel) {
             codes += ShortsSignalCode.SHORTS_LABEL
-            score += 0.15f
-            independentSignals += 1
+            if (structuralShorts) score += 0.05f
         }
         if (portraitWindow && hasPrimaryShortsEvidence) {
             codes += ShortsSignalCode.PORTRAIT_WINDOW
             score += 0.1f
-            independentSignals += 1
         }
         if (verticalScrollEvent && hasPrimaryShortsEvidence) {
             codes += ShortsSignalCode.VERTICAL_SCROLL_EVENT
             score += 0.1f
-            independentSignals += 1
         }
 
         if (strongPositive) {
             return Observation.Positive(confidence = 0.95f, codes = codes)
         }
         if (
+            structuralShorts &&
             independentSignals >= rules.minimumIndependentSignals &&
             score >= rules.positiveThreshold
         ) {
@@ -303,7 +308,7 @@ class YouTubeShortsDetector(
             val type = listOfNotNull(node.className, node.roleName)
                 .joinToString(separator = " ")
                 .lowercase(Locale.ROOT)
-            val pagerType = "viewpager" in type || "recyclerview" in type
+            val pagerType = "viewpager" in type || "pager" in type
             val canPage = ACTION_SCROLL_FORWARD in node.actionIds ||
                 ACTION_SCROLL_BACKWARD in node.actionIds
             return node.isScrollable && pagerType && canPage

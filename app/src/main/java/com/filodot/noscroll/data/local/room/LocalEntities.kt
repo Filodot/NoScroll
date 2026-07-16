@@ -41,6 +41,8 @@ data class GateCycleEntity(
     val intervalBlockStreak: Int,
     @ColumnInfo(name = "last_interval_block_at_epoch_millis")
     val lastIntervalBlockAtEpochMillis: Long?,
+    @ColumnInfo(name = "entry_cooldown_until_epoch_millis")
+    val entryCooldownUntilEpochMillis: Long?,
     @ColumnInfo(name = "updated_at_epoch_millis")
     val updatedAtEpochMillis: Long,
 )

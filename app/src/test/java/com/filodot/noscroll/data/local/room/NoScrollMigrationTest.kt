@@ -28,11 +28,11 @@ class NoScrollMigrationTest {
     }
 
     @Test
-    fun migrationOneToTwoPreservesUsageAndInitializesEmergencySeconds() = runBlocking {
+    fun migrationOneToFourPreservesUsageAndInitializesNewColumns() = runBlocking {
         createVersionOneDatabase()
 
         val database = Room.databaseBuilder(context, NoScrollDatabase::class.java, databaseName)
-            .addMigrations(NoScrollDatabase.MIGRATION_1_2, NoScrollDatabase.MIGRATION_2_3)
+            .addMigrations(*NoScrollDatabase.ALL_MIGRATIONS)
             .allowMainThreadQueries()
             .build()
         val migrated = requireNotNull(database.dailyUsageDao().get("2026-07-14"))
@@ -41,15 +41,16 @@ class NoScrollMigrationTest {
         assertEquals(1_234L, migrated.youtubeSeconds)
         assertEquals(456L, migrated.shortsSeconds)
         assertEquals(0L, migrated.emergencyYoutubeSeconds)
+        assertEquals(null, database.gateCycleDao().get("current"))
         database.close()
     }
 
     @Test
-    fun migrationTwoToThreePreservesPendingGateAndAddsDifficultyDefaults() = runBlocking {
+    fun migrationTwoToFourPreservesPendingGateAndAddsAllDefaults() = runBlocking {
         createVersionTwoDatabase()
 
         val database = Room.databaseBuilder(context, NoScrollDatabase::class.java, databaseName)
-            .addMigrations(NoScrollDatabase.MIGRATION_2_3)
+            .addMigrations(NoScrollDatabase.MIGRATION_2_3, NoScrollDatabase.MIGRATION_3_4)
             .allowMainThreadQueries()
             .build()
         val cycle = requireNotNull(database.gateCycleDao().get("current")).toModel()
@@ -59,8 +60,27 @@ class NoScrollMigrationTest {
         assertEquals("task-legacy", cycle.pendingTaskId)
         assertEquals(0, cycle.intervalBlockStreak)
         assertEquals(null, cycle.lastIntervalBlockAt)
+        assertEquals(null, cycle.entryCooldownUntil)
         assertEquals(com.filodot.noscroll.core.model.TaskDifficulty.MEDIUM, task.difficulty)
         assertEquals(com.filodot.noscroll.core.model.TaskTrigger.INTERVAL, task.trigger)
+        database.close()
+    }
+
+    @Test
+    fun migrationThreeToFourPreservesVersionThreeState() = runBlocking {
+        createVersionThreeDatabase()
+
+        val database = Room.databaseBuilder(context, NoScrollDatabase::class.java, databaseName)
+            .addMigrations(NoScrollDatabase.MIGRATION_3_4)
+            .allowMainThreadQueries()
+            .build()
+        val cycle = requireNotNull(database.gateCycleDao().get("current")).toModel()
+        val task = requireNotNull(database.pendingTaskDao().get("entry-v3")).toModel()
+
+        assertEquals(222L, cycle.usedSeconds)
+        assertEquals(3, cycle.intervalBlockStreak)
+        assertEquals(null, cycle.entryCooldownUntil)
+        assertEquals(com.filodot.noscroll.core.model.TaskTrigger.ENTRY, task.trigger)
         database.close()
     }
 
@@ -135,6 +155,52 @@ class NoScrollMigrationTest {
         }
     }
 
+    private fun createVersionThreeDatabase() {
+        val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name(databaseName)
+            .callback(
+                object : SupportSQLiteOpenHelper.Callback(3) {
+                    override fun onCreate(db: SupportSQLiteDatabase) {
+                        VERSION_THREE_CREATE_STATEMENTS.forEach(db::execSQL)
+                        db.execSQL(
+                            "INSERT INTO daily_usage " +
+                                "(local_date, youtube_seconds, shorts_seconds, " +
+                                "emergency_youtube_seconds, gates_shown, tasks_solved, " +
+                                "task_exits, last_updated_elapsed_millis, " +
+                                "updated_at_epoch_millis) VALUES " +
+                                "('2026-07-14', 400, 222, 0, 2, 1, 0, 2000, 1784005200000)",
+                        )
+                        db.execSQL(
+                            "INSERT INTO gate_cycles " +
+                                "(id, local_date, used_seconds, pending_task_id, " +
+                                "interval_block_streak, last_interval_block_at_epoch_millis, " +
+                                "updated_at_epoch_millis) VALUES " +
+                                "('current', '2026-07-14', 222, 'entry-v3', 3, " +
+                                "1784005100000, 1784005200000)",
+                        )
+                        db.execSQL(
+                            "INSERT INTO pending_tasks " +
+                                "(id, operation, left_operand, right_operand, expected_answer, " +
+                                "created_at_epoch_millis, wrong_attempts, solved, difficulty, " +
+                                "trigger) VALUES " +
+                                "('entry-v3', 'ADD', 2, 3, 5, 1784005200000, 0, 0, " +
+                                "'EASY', 'ENTRY')",
+                        )
+                    }
+
+                    override fun onUpgrade(
+                        db: SupportSQLiteDatabase,
+                        oldVersion: Int,
+                        newVersion: Int,
+                    ) = Unit
+                },
+            )
+            .build()
+        FrameworkSQLiteOpenHelperFactory().create(configuration).use { helper ->
+            helper.writableDatabase
+        }
+    }
+
     companion object {
         private val VERSION_ONE_CREATE_STATEMENTS = listOf(
             "CREATE TABLE IF NOT EXISTS daily_usage (" +
@@ -172,6 +238,30 @@ class NoScrollMigrationTest {
                 "right_operand INTEGER NOT NULL, expected_answer INTEGER NOT NULL, " +
                 "created_at_epoch_millis INTEGER NOT NULL, wrong_attempts INTEGER NOT NULL, " +
                 "solved INTEGER NOT NULL, PRIMARY KEY(id))",
+            "CREATE TABLE IF NOT EXISTS emergency_events (" +
+                "id TEXT NOT NULL, reason TEXT NOT NULL, activated_at_epoch_millis INTEGER NOT NULL, " +
+                "deactivated_at_epoch_millis INTEGER, activation_source TEXT NOT NULL, " +
+                "youtube_seconds_during INTEGER NOT NULL, PRIMARY KEY(id))",
+        )
+
+        private val VERSION_THREE_CREATE_STATEMENTS = listOf(
+            "CREATE TABLE IF NOT EXISTS daily_usage (" +
+                "local_date TEXT NOT NULL, youtube_seconds INTEGER NOT NULL, " +
+                "shorts_seconds INTEGER NOT NULL, emergency_youtube_seconds INTEGER NOT NULL " +
+                "DEFAULT 0, gates_shown INTEGER NOT NULL, tasks_solved INTEGER NOT NULL, " +
+                "task_exits INTEGER NOT NULL, last_updated_elapsed_millis INTEGER, " +
+                "updated_at_epoch_millis INTEGER NOT NULL, PRIMARY KEY(local_date))",
+            "CREATE TABLE IF NOT EXISTS gate_cycles (" +
+                "id TEXT NOT NULL, local_date TEXT NOT NULL, used_seconds INTEGER NOT NULL, " +
+                "pending_task_id TEXT, interval_block_streak INTEGER NOT NULL DEFAULT 0, " +
+                "last_interval_block_at_epoch_millis INTEGER, " +
+                "updated_at_epoch_millis INTEGER NOT NULL, PRIMARY KEY(id))",
+            "CREATE TABLE IF NOT EXISTS pending_tasks (" +
+                "id TEXT NOT NULL, operation TEXT NOT NULL, left_operand INTEGER NOT NULL, " +
+                "right_operand INTEGER NOT NULL, expected_answer INTEGER NOT NULL, " +
+                "created_at_epoch_millis INTEGER NOT NULL, wrong_attempts INTEGER NOT NULL, " +
+                "solved INTEGER NOT NULL, difficulty TEXT NOT NULL DEFAULT 'MEDIUM', " +
+                "trigger TEXT NOT NULL DEFAULT 'INTERVAL', PRIMARY KEY(id))",
             "CREATE TABLE IF NOT EXISTS emergency_events (" +
                 "id TEXT NOT NULL, reason TEXT NOT NULL, activated_at_epoch_millis INTEGER NOT NULL, " +
                 "deactivated_at_epoch_millis INTEGER, activation_source TEXT NOT NULL, " +

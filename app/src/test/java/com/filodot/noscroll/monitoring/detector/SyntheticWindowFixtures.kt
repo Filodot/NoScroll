@@ -72,6 +72,17 @@ object SyntheticWindowFixtures {
         nodes = listOf(pager()),
     )
 
+    fun regularVideoWithBottomNavigation(timestamp: Long): WindowSnapshot = snapshot(
+        timestamp = timestamp,
+        eventType = TYPE_VIEW_SCROLLED,
+        nodes = listOf(
+            scrollingList(),
+            action(KnownTextHint.COMMENTS_ACTION),
+            action(KnownTextHint.SHARE_ACTION),
+            action(KnownTextHint.SHORTS_LABEL),
+        ),
+    )
+
     fun conflictingLayout(timestamp: Long): WindowSnapshot = snapshot(
         timestamp = timestamp,
         nodes = listOf(
@@ -127,6 +138,13 @@ object SyntheticWindowFixtures {
     private fun pager(): WindowNodeSignal = WindowNodeSignal(
         className = "androidx.viewpager2.widget.ViewPager2",
         roleName = "vertical_pager",
+        isScrollable = true,
+        actionIds = setOf(ACTION_SCROLL_FORWARD, ACTION_SCROLL_BACKWARD),
+    )
+
+    private fun scrollingList(): WindowNodeSignal = WindowNodeSignal(
+        className = "androidx.recyclerview.widget.RecyclerView",
+        roleName = "list",
         isScrollable = true,
         actionIds = setOf(ACTION_SCROLL_FORWARD, ACTION_SCROLL_BACKWARD),
     )

@@ -31,7 +31,7 @@ abstract class NoScrollDatabase : RoomDatabase() {
 
     companion object {
         const val DATABASE_NAME = "noscroll.db"
-        const val VERSION = 3
+        const val VERSION = 4
 
         val MIGRATION_1_2 = Migration(1, 2) { database ->
             database.execSQL(
@@ -59,7 +59,14 @@ abstract class NoScrollDatabase : RoomDatabase() {
             )
         }
 
-        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+        val MIGRATION_3_4 = Migration(3, 4) { database ->
+            database.execSQL(
+                "ALTER TABLE gate_cycles " +
+                    "ADD COLUMN entry_cooldown_until_epoch_millis INTEGER",
+            )
+        }
+
+        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 
         fun build(context: Context, name: String = DATABASE_NAME): NoScrollDatabase =
             Room.databaseBuilder(context, NoScrollDatabase::class.java, name)

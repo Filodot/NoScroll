@@ -100,6 +100,35 @@ class YouTubeShortsDetectorTest {
     }
 
     @Test
+    fun regularVideoListWithActionsAndShortsNavigationNeverConfirms() {
+        val detector = YouTubeShortsDetector()
+
+        repeat(4) { index ->
+            val result = detector.evaluate(
+                SyntheticWindowFixtures.regularVideoWithBottomNavigation(3_100L + index),
+            )
+
+            assertTrue(result.state != ShortsDetectionState.SHORTS_CONFIRMED)
+            assertTrue(ShortsSignalCode.ACTION_STACK in result.matchedSignalCodes)
+            assertTrue(ShortsSignalCode.SHORTS_LABEL in result.matchedSignalCodes)
+            assertFalse(ShortsSignalCode.VERTICAL_PAGER in result.matchedSignalCodes)
+        }
+    }
+
+    @Test
+    fun explicitResetClearsStickyShortsExitDebounce() {
+        val detector = confirmedDetector()
+
+        detector.resetToNotShorts(8_010)
+        val result = detector.evaluate(
+            SyntheticWindowFixtures.knownNonShorts(8_011, "home_results"),
+        )
+
+        assertEquals(ShortsDetectionState.NOT_SHORTS, result.state)
+        assertFalse(ShortsSignalCode.NEGATIVE_EXIT_PENDING in result.matchedSignalCodes)
+    }
+
+    @Test
     fun emptyTreeIsUnknownAndFailOpen() {
         val result = YouTubeShortsDetector().evaluate(SyntheticWindowFixtures.empty(4_000))
 

@@ -42,6 +42,7 @@ fun GateCycle.toEntity(): GateCycleEntity = GateCycleEntity(
     pendingTaskId = pendingTaskId,
     intervalBlockStreak = intervalBlockStreak,
     lastIntervalBlockAtEpochMillis = lastIntervalBlockAt?.toEpochMilli(),
+    entryCooldownUntilEpochMillis = entryCooldownUntil?.toEpochMilli(),
     updatedAtEpochMillis = updatedAt.toEpochMilli(),
 )
 
@@ -52,6 +53,7 @@ fun GateCycleEntity.toModel(): GateCycle = GateCycle(
     pendingTaskId = pendingTaskId,
     intervalBlockStreak = intervalBlockStreak,
     lastIntervalBlockAt = lastIntervalBlockAtEpochMillis?.let(Instant::ofEpochMilli),
+    entryCooldownUntil = entryCooldownUntilEpochMillis?.let(Instant::ofEpochMilli),
     updatedAt = Instant.ofEpochMilli(updatedAtEpochMillis),
 )
 

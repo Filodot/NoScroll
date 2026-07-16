@@ -118,6 +118,7 @@ class MonitoringCoordinator(
                     latestDeviceState = state
                     if (state.foregroundPackage != AccessibilityAdapterController.YOUTUBE_PACKAGE_NAME) {
                         latestDetectionState = ShortsDetectionState.NOT_SHORTS
+                        detector.resetToNotShorts(SystemClock.elapsedRealtime())
                         entryGate.onYouTubeForegroundLost()
                     }
                     evaluatePolicy()
@@ -166,6 +167,7 @@ class MonitoringCoordinator(
 
     fun onShortsPlaybackEjected() {
         latestDetectionState = ShortsDetectionState.NOT_SHORTS
+        detector.resetToNotShorts(SystemClock.elapsedRealtime())
     }
 
     suspend fun verifyAnswer(taskId: String, answer: String): Boolean = mutex.withLock {
@@ -182,14 +184,26 @@ class MonitoringCoordinator(
         }
 
         val now = wallClock.now()
+        val intervalMinutes = settingsRepository.settings.value.shortsIntervalMinutes
+            .coerceAtLeast(1)
+        val entryCooldownSeconds = intervalMinutes.toLong() * SECONDS_PER_MINUTE
+        val entryCooldownUntil = if (task.trigger == TaskTrigger.ENTRY) {
+            now.plusSeconds(entryCooldownSeconds)
+        } else {
+            null
+        }
         val granted = taskGrantTransaction.grant(
             taskId = task.id,
             localDate = now.atZone(zoneId).toLocalDate(),
             updatedAt = now,
+            entryCooldownUntil = entryCooldownUntil,
         )
         if (granted) {
             if (task.trigger == TaskTrigger.ENTRY) {
-                entryGate.onTaskSolved(SystemClock.elapsedRealtime())
+                entryGate.onTaskSolved(
+                    elapsedMillis = SystemClock.elapsedRealtime(),
+                    validityMillis = entryCooldownSeconds * MILLIS_PER_SECOND,
+                )
                 latestDetectionState = ShortsDetectionState.NOT_SHORTS
             }
             ignoreTaskGateUntilElapsedMillis = SystemClock.elapsedRealtime() +
@@ -332,6 +346,7 @@ class MonitoringCoordinator(
     }
 
     private suspend fun evaluatePolicyLocked(usage: DailyUsage, cycle: GateCycle) {
+        val now = wallClock.now()
         val youtubeForeground = latestDeviceState.foregroundPackage ==
             AccessibilityAdapterController.YOUTUBE_PACKAGE_NAME
         if (!youtubeForeground && mutableEnforcement.value != null) {
@@ -356,7 +371,8 @@ class MonitoringCoordinator(
                 emergencyState = emergencyRepository.state.value,
                 detectorState = latestDetectionState,
                 youtubeForeground = youtubeForeground,
-                entryGatePaid = entryGate.isPaid(SystemClock.elapsedRealtime()),
+                entryGatePaid = entryGate.isPaid(SystemClock.elapsedRealtime()) ||
+                    cycle.entryCooldownUntil?.let(now::isBefore) == true,
             ),
         )
         when (decision) {

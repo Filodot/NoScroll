@@ -105,13 +105,15 @@ abstract class TaskGrantDao {
     ): Int
 
     @Query(
-        "UPDATE gate_cycles SET pending_task_id = NULL, " +
+        "UPDATE gate_cycles SET used_seconds = 0, pending_task_id = NULL, " +
+            "entry_cooldown_until_epoch_millis = :entryCooldownUntilEpochMillis, " +
             "updated_at_epoch_millis = :updatedAtEpochMillis " +
             "WHERE id = :cycleId AND pending_task_id = :taskId",
     )
-    protected abstract suspend fun clearEntryTask(
+    protected abstract suspend fun grantEntryCooldown(
         cycleId: String,
         taskId: String,
+        entryCooldownUntilEpochMillis: Long,
         updatedAtEpochMillis: Long,
     ): Int
 
@@ -124,6 +126,7 @@ abstract class TaskGrantDao {
         localDate: String,
         cycleId: String,
         updatedAtEpochMillis: Long,
+        entryCooldownUntilEpochMillis: Long?,
     ): Boolean {
         val task = getUnsolvedTask(taskId) ?: return false
         val cycle = getCycle(cycleId) ?: return false
@@ -134,7 +137,14 @@ abstract class TaskGrantDao {
             "Task grant lost the daily aggregate"
         }
         val cycleUpdated = if (task.trigger == TaskTrigger.ENTRY.name) {
-            clearEntryTask(cycleId, taskId, updatedAtEpochMillis)
+            grantEntryCooldown(
+                cycleId = cycleId,
+                taskId = taskId,
+                entryCooldownUntilEpochMillis = requireNotNull(entryCooldownUntilEpochMillis) {
+                    "Entry task grant requires a cooldown deadline"
+                },
+                updatedAtEpochMillis = updatedAtEpochMillis,
+            )
         } else {
             resetCycle(cycleId, taskId, updatedAtEpochMillis)
         }

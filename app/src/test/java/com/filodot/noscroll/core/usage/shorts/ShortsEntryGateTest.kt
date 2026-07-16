@@ -53,6 +53,14 @@ class ShortsEntryGateTest {
     }
 
     @Test
+    fun `task can override grant validity with configured interval`() {
+        gate.onTaskSolved(elapsedMillis = 10, validityMillis = 60)
+
+        assertTrue(gate.isPaid(69))
+        assertFalse(gate.isPaid(70))
+    }
+
+    @Test
     fun `leaving YouTube ends active session but preserves unused grant`() {
         gate.onTaskSolved(0)
         gate.onYouTubeForegroundLost()

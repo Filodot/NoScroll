@@ -42,7 +42,7 @@ internal object AccessibilityOverlayWindowPolicy {
         WindowManager.LayoutParams.MATCH_PARENT,
         WindowManager.LayoutParams.MATCH_PARENT,
         WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-        0,
+        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
         PixelFormat.OPAQUE,
     ).apply {
         gravity = Gravity.TOP or Gravity.START

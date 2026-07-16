@@ -89,6 +89,7 @@ class RoomRepositoriesTest {
             pendingTaskId = task.id,
             intervalBlockStreak = 2,
             lastIntervalBlockAt = now.minusSeconds(60),
+            entryCooldownUntil = now.plusSeconds(300),
         )
         val activeEmergency = emergency("emergency-1", now, deactivatedAt = null)
 
@@ -179,10 +180,11 @@ class RoomRepositoriesTest {
     }
 
     @Test
-    fun entryTaskGrantPreservesAccumulatedIntervalTime() = runBlocking {
+    fun entryTaskGrantResetsIntervalAndPersistsCooldown() = runBlocking {
         val date = LocalDate.of(2026, 7, 14)
         val createdAt = Instant.parse("2026-07-14T05:00:00Z")
         val grantedAt = createdAt.plusSeconds(30)
+        val cooldownUntil = grantedAt.plusSeconds(300)
         val task = pendingTask("entry-task", createdAt).copy(
             difficulty = TaskDifficulty.EASY,
             trigger = TaskTrigger.ENTRY,
@@ -200,13 +202,19 @@ class RoomRepositoriesTest {
 
         assertTrue(
             RoomTaskGrantTransaction(database.taskGrantDao())
-                .grant(task.id, date, grantedAt),
+                .grant(
+                    taskId = task.id,
+                    localDate = date,
+                    updatedAt = grantedAt,
+                    entryCooldownUntil = cooldownUntil,
+                ),
         )
 
         val cycle = requireNotNull(database.gateCycleDao().get(GateCycle.CURRENT_GATE_CYCLE_ID))
             .toModel()
-        assertEquals(123L, cycle.usedSeconds)
+        assertEquals(0L, cycle.usedSeconds)
         assertEquals(2, cycle.intervalBlockStreak)
+        assertEquals(cooldownUntil, cycle.entryCooldownUntil)
         assertNull(cycle.pendingTaskId)
         assertNull(database.pendingTaskDao().get(task.id))
     }
