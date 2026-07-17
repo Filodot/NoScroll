@@ -5,6 +5,7 @@ import com.filodot.noscroll.core.model.EmergencyEvent
 import com.filodot.noscroll.core.model.EmergencyState
 import com.filodot.noscroll.core.model.GateCycle
 import com.filodot.noscroll.core.model.PendingTask
+import com.filodot.noscroll.core.model.CustomTaskPreset
 import com.filodot.noscroll.core.model.UserSettings
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +31,14 @@ interface TaskRepository {
     suspend fun save(task: PendingTask)
 
     suspend fun clear(taskId: String)
+}
+
+interface TaskPresetRepository {
+    val presets: StateFlow<List<CustomTaskPreset>>
+
+    suspend fun save(preset: CustomTaskPreset)
+
+    suspend fun delete(presetId: String)
 }
 
 interface EmergencyRepository {

@@ -7,6 +7,7 @@ import com.filodot.noscroll.data.local.datastore.DataStoreSettingsRepository
 import com.filodot.noscroll.data.local.repository.RoomEmergencyRepository
 import com.filodot.noscroll.data.local.repository.RoomTaskGrantTransaction
 import com.filodot.noscroll.data.local.repository.RoomTaskRepository
+import com.filodot.noscroll.data.local.repository.RoomTaskPresetRepository
 import com.filodot.noscroll.data.local.repository.RoomUsageRepository
 import com.filodot.noscroll.data.local.room.NoScrollDatabase
 import com.filodot.noscroll.feature.dashboard.DashboardUiState
@@ -46,6 +47,10 @@ class NoScrollRuntime private constructor(application: Application) {
         initialGateCycle = GateCycle(localDate = today, updatedAt = now),
     )
     val taskRepository = RoomTaskRepository(database.pendingTaskDao(), applicationScope)
+    val taskPresetRepository = RoomTaskPresetRepository(
+        database.customTaskPresetDao(),
+        applicationScope,
+    )
     val emergencyRepository = RoomEmergencyRepository(
         database.emergencyEventDao(),
         applicationScope,
@@ -57,6 +62,7 @@ class NoScrollRuntime private constructor(application: Application) {
             usageRepository.dailyInitialized,
             usageRepository.gateInitialized,
             taskRepository.initialized,
+            taskPresetRepository.initialized,
             emergencyRepository.initialized,
         ),
     ) { values -> values.all { it } }
@@ -66,6 +72,7 @@ class NoScrollRuntime private constructor(application: Application) {
         settingsRepository = settingsRepository,
         usageRepository = usageRepository,
         taskRepository = taskRepository,
+        taskPresetRepository = taskPresetRepository,
         emergencyRepository = emergencyRepository,
         taskGrantTransaction = RoomTaskGrantTransaction(database.taskGrantDao()),
         usageStatsSource = AndroidUsageStatsSource(application),
@@ -76,6 +83,7 @@ class NoScrollRuntime private constructor(application: Application) {
         settingsRepository = settingsRepository,
         usageRepository = usageRepository,
         taskRepository = taskRepository,
+        taskPresetRepository = taskPresetRepository,
         emergencyRepository = emergencyRepository,
         dashboardState = DashboardUiState(dateLabel = "Сегодня"),
         settingsState = SettingsUiState(

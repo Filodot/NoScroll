@@ -11,6 +11,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
 import com.filodot.noscroll.ui.theme.NoScrollTheme
+import com.filodot.noscroll.core.model.TaskCompletionMode
+import com.filodot.noscroll.core.model.TaskTarget
+import com.filodot.noscroll.core.model.TaskType
 import org.junit.Rule
 import org.junit.Test
 
@@ -128,6 +131,28 @@ class BlockingOverlayScreenTest {
         composeRule.runOnIdle {
             check(lastAction == BlockingOverlayAction.OpenYouTube)
         }
+    }
+
+    @Test
+    fun manualInstagramTaskShowsInstructionWithoutAnswerKeyboard() {
+        var lastAction: BlockingOverlayAction? = null
+        composeRule.setOverlay(
+            BlockingOverlayUiState(
+                enforcement = task().copy(
+                    visualExpression = "Сделайте 10 отжиманий в комфортном темпе",
+                    target = TaskTarget.INSTAGRAM,
+                    type = TaskType.PUSH_UPS,
+                    completionMode = TaskCompletionMode.MANUAL_CONFIRMATION,
+                ),
+            ),
+            onAction = { lastAction = it },
+        )
+
+        composeRule.onNodeWithText("Сделайте 10 отжиманий в комфортном темпе")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Выполнено").performClick()
+        composeRule.onNodeWithText("Ответ").assertDoesNotExist()
+        composeRule.runOnIdle { check(lastAction == BlockingOverlayAction.SubmitAnswer) }
     }
 
     private fun androidx.compose.ui.test.junit4.ComposeContentTestRule.setOverlay(

@@ -99,7 +99,7 @@ fun LimitsScreen(
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "Настройте паузы Shorts и общий дневной предел отдельно.",
+                        text = "Настройте интервалы Shorts, Instagram и дневной предел YouTube.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyLarge,
                     )
@@ -124,6 +124,8 @@ fun LimitsScreen(
                     Spacer(Modifier.height(20.dp))
                     ShortsSettingsCard(state.draft, onAction)
                     Spacer(Modifier.height(16.dp))
+                    InstagramSettingsCard(state.draft, onAction)
+                    Spacer(Modifier.height(16.dp))
                     DailySettingsCard(state.draft, onAction)
                     if (state.showDailyBeforeShortsWarning) {
                         Spacer(Modifier.height(16.dp))
@@ -138,6 +140,51 @@ fun LimitsScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun InstagramSettingsCard(
+    values: LimitsValues,
+    onAction: (LimitsAction) -> Unit,
+) {
+    SettingsCard(
+        title = "Интервалы Instagram",
+        enabled = values.instagramEnabled,
+        onEnabledChange = { onAction(LimitsAction.SetInstagramEnabled(it)) },
+    ) {
+        ValueHeader(
+            value = "${values.instagramMinutes} мин",
+            recommended = values.instagramMinutes == 10,
+        )
+        Slider(
+            value = values.instagramMinutes.toFloat(),
+            onValueChange = { onAction(LimitsAction.SetInstagramMinutes(it.toInt())) },
+            valueRange = SHORTS_INTERVAL_RANGE.first.toFloat()..
+                SHORTS_INTERVAL_RANGE.last.toFloat(),
+            steps = SHORTS_INTERVAL_RANGE.count() - 2,
+            enabled = values.instagramEnabled,
+            modifier = Modifier.semantics {
+                stateDescription = "${values.instagramMinutes} минут"
+            },
+        )
+        Stepper(
+            valueLabel = "${values.instagramMinutes} минут",
+            decrementDescription = "Уменьшить интервал Instagram",
+            incrementDescription = "Увеличить интервал Instagram",
+            canDecrement = values.instagramEnabled &&
+                values.instagramMinutes > SHORTS_INTERVAL_RANGE.first,
+            canIncrement = values.instagramEnabled &&
+                values.instagramMinutes < SHORTS_INTERVAL_RANGE.last,
+            onDecrement = { onAction(LimitsAction.DecrementInstagram) },
+            onIncrement = { onAction(LimitsAction.IncrementInstagram) },
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = "Считается всё время внутри Instagram, не только Reels. Рекомендуем: 10 минут",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+        )
     }
 }
 

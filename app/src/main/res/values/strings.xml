@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">NoScroll</string>
-    <string name="accessibility_service_label">NoScroll: YouTube Shorts</string>
-    <string name="accessibility_service_description">Определяет экран YouTube Shorts на устройстве и передаёт только обезличенные сигналы приложению NoScroll.</string>
+    <string name="accessibility_service_label">NoScroll: Shorts и Instagram</string>
+    <string name="accessibility_service_description">Определяет YouTube Shorts и нахождение в Instagram, передавая приложению NoScroll только обезличенные сигналы.</string>
 </resources>

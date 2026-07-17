@@ -7,6 +7,7 @@ data class DailyUsage(
     val localDate: LocalDate,
     val youtubeSeconds: Long = 0,
     val shortsSeconds: Long = 0,
+    val instagramSeconds: Long = 0,
     val emergencyYoutubeSeconds: Long = 0,
     val gatesShown: Int = 0,
     val tasksSolved: Int = 0,
@@ -24,6 +25,12 @@ data class GateCycle(
     val intervalBlockStreak: Int = 0,
     val lastIntervalBlockAt: Instant? = null,
     val entryCooldownUntil: Instant? = null,
+    val instagramUsedSeconds: Long = 0,
+    val instagramEntryCooldownUntil: Instant? = null,
+    /** Persistent Shorts load; unlike interval counters it survives local-date rollover. */
+    val difficultyLoadSeconds: Long = 0,
+    val difficultyLoadUpdatedAt: Instant? = null,
+    val difficultyRecoverySeconds: Long = 0,
 ) {
     companion object {
         const val CURRENT_GATE_CYCLE_ID = "current"

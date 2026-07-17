@@ -50,6 +50,18 @@ interface PendingTaskDao {
 }
 
 @Dao
+interface CustomTaskPresetDao {
+    @Query("SELECT * FROM custom_task_presets ORDER BY created_at_epoch_millis, id")
+    fun observeAll(): Flow<List<CustomTaskPresetEntity>>
+
+    @Upsert
+    suspend fun upsert(entity: CustomTaskPresetEntity)
+
+    @Query("DELETE FROM custom_task_presets WHERE id = :id")
+    suspend fun delete(id: String): Int
+}
+
+@Dao
 interface EmergencyEventDao {
     @Query(
         "SELECT * FROM emergency_events WHERE deactivated_at_epoch_millis IS NULL " +
@@ -99,7 +111,7 @@ abstract class TaskGrantDao {
             "updated_at_epoch_millis = :updatedAtEpochMillis " +
             "WHERE id = :cycleId AND pending_task_id = :taskId",
     )
-    protected abstract suspend fun resetCycle(
+    protected abstract suspend fun resetYoutubeCycle(
         cycleId: String,
         taskId: String,
         entryCooldownUntilEpochMillis: Long,
@@ -107,12 +119,12 @@ abstract class TaskGrantDao {
     ): Int
 
     @Query(
-        "UPDATE gate_cycles SET used_seconds = 0, pending_task_id = NULL, " +
-            "entry_cooldown_until_epoch_millis = :entryCooldownUntilEpochMillis, " +
+        "UPDATE gate_cycles SET instagram_used_seconds = 0, pending_task_id = NULL, " +
+            "instagram_entry_cooldown_until_epoch_millis = :entryCooldownUntilEpochMillis, " +
             "updated_at_epoch_millis = :updatedAtEpochMillis " +
             "WHERE id = :cycleId AND pending_task_id = :taskId",
     )
-    protected abstract suspend fun grantEntryCooldown(
+    protected abstract suspend fun resetInstagramCycle(
         cycleId: String,
         taskId: String,
         entryCooldownUntilEpochMillis: Long,
@@ -138,15 +150,15 @@ abstract class TaskGrantDao {
         check(incrementTasksSolved(localDate, updatedAtEpochMillis) == 1) {
             "Task grant lost the daily aggregate"
         }
-        val cycleUpdated = if (task.trigger == TaskTrigger.ENTRY.name) {
-            grantEntryCooldown(
+        val cycleUpdated = if (task.target == "INSTAGRAM") {
+            resetInstagramCycle(
                 cycleId = cycleId,
                 taskId = taskId,
                 entryCooldownUntilEpochMillis = entryCooldownUntilEpochMillis,
                 updatedAtEpochMillis = updatedAtEpochMillis,
             )
         } else {
-            resetCycle(
+            resetYoutubeCycle(
                 cycleId = cycleId,
                 taskId = taskId,
                 entryCooldownUntilEpochMillis = entryCooldownUntilEpochMillis,

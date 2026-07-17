@@ -50,10 +50,11 @@ class DashboardModelsTest {
     }
 
     @Test
-    fun `emergency is disabled only when both configured limits are off`() {
+    fun `emergency is disabled only when every configured limit is off`() {
         val allOff = DashboardUiState(
             dateLabel = "14 июля",
             shorts = ShortsLimitUiState.Disabled,
+            instagram = InstagramLimitUiState.Disabled,
             daily = DailyLimitUiState.Disabled,
         )
         val dailyUnavailable = allOff.copy(daily = DailyLimitUiState.Unavailable)

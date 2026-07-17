@@ -3,15 +3,18 @@ package com.filodot.noscroll.data.local.room
 import androidx.room.Room
 import com.filodot.noscroll.core.model.ArithmeticOperation
 import com.filodot.noscroll.core.model.DailyUsage
+import com.filodot.noscroll.core.model.CustomTaskPreset
 import com.filodot.noscroll.core.model.EmergencyActivationSource
 import com.filodot.noscroll.core.model.EmergencyEvent
 import com.filodot.noscroll.core.model.GateCycle
 import com.filodot.noscroll.core.model.PendingTask
 import com.filodot.noscroll.core.model.TaskDifficulty
 import com.filodot.noscroll.core.model.TaskTrigger
+import com.filodot.noscroll.core.model.TaskTarget
 import com.filodot.noscroll.data.local.repository.RoomEmergencyRepository
 import com.filodot.noscroll.data.local.repository.RoomTaskGrantTransaction
 import com.filodot.noscroll.data.local.repository.RoomTaskRepository
+import com.filodot.noscroll.data.local.repository.RoomTaskPresetRepository
 import com.filodot.noscroll.data.local.repository.RoomUsageRepository
 import com.filodot.noscroll.data.local.retention.LocalDataRetention
 import java.time.Instant
@@ -226,6 +229,54 @@ class RoomRepositoriesTest {
         assertEquals(cooldownUntil, cycle.entryCooldownUntil)
         assertNull(cycle.pendingTaskId)
         assertNull(database.pendingTaskDao().get(task.id))
+    }
+
+    @Test
+    fun instagramGrantResetsOnlyInstagramInterval() = runBlocking {
+        val date = LocalDate.of(2026, 7, 14)
+        val now = Instant.parse("2026-07-14T05:00:00Z")
+        val cooldownUntil = now.plusSeconds(600)
+        val task = pendingTask("instagram-task", now).copy(target = TaskTarget.INSTAGRAM)
+        database.dailyUsageDao().upsert(dailyUsage(date, now).toEntity())
+        database.pendingTaskDao().upsert(task.toEntity())
+        database.gateCycleDao().upsert(
+            gateCycle(date, now).copy(
+                usedSeconds = 111,
+                instagramUsedSeconds = 600,
+                pendingTaskId = task.id,
+            ).toEntity(),
+        )
+
+        assertTrue(
+            RoomTaskGrantTransaction(database.taskGrantDao()).grant(
+                task.id,
+                date,
+                now,
+                cooldownUntil,
+            ),
+        )
+
+        val cycle = requireNotNull(database.gateCycleDao().get(GateCycle.CURRENT_GATE_CYCLE_ID))
+            .toModel()
+        assertEquals(111L, cycle.usedSeconds)
+        assertEquals(0L, cycle.instagramUsedSeconds)
+        assertEquals(cooldownUntil, cycle.instagramEntryCooldownUntil)
+    }
+
+    @Test
+    fun customTaskPresetsRoundTripAndDelete() = runBlocking {
+        val repository = RoomTaskPresetRepository(database.customTaskPresetDao(), scope)
+        val preset = CustomTaskPreset(
+            id = "preset-1",
+            title = "Вода",
+            instruction = "Выпить стакан воды",
+            createdAt = Instant.parse("2026-07-14T05:00:00Z"),
+        )
+
+        repository.save(preset)
+        assertEquals(preset, withTimeout(5_000) { repository.presets.filter { it == listOf(preset) }.first() }.single())
+        repository.delete(preset.id)
+        assertTrue(withTimeout(5_000) { repository.presets.filter(List<CustomTaskPreset>::isEmpty).first() }.isEmpty())
     }
 
     @Test

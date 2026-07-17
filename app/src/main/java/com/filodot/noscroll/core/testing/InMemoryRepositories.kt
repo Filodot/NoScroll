@@ -3,8 +3,10 @@ package com.filodot.noscroll.core.testing
 import com.filodot.noscroll.core.contracts.EmergencyRepository
 import com.filodot.noscroll.core.contracts.SettingsRepository
 import com.filodot.noscroll.core.contracts.TaskRepository
+import com.filodot.noscroll.core.contracts.TaskPresetRepository
 import com.filodot.noscroll.core.contracts.UsageRepository
 import com.filodot.noscroll.core.model.DailyUsage
+import com.filodot.noscroll.core.model.CustomTaskPreset
 import com.filodot.noscroll.core.model.EmergencyEvent
 import com.filodot.noscroll.core.model.EmergencyState
 import com.filodot.noscroll.core.model.GateCycle
@@ -60,6 +62,21 @@ class InMemoryTaskRepository(
         if (mutablePendingTask.value?.id == taskId) {
             mutablePendingTask.value = null
         }
+    }
+}
+
+class InMemoryTaskPresetRepository(
+    initialPresets: List<CustomTaskPreset> = emptyList(),
+) : TaskPresetRepository {
+    private val mutablePresets = MutableStateFlow(initialPresets)
+    override val presets: StateFlow<List<CustomTaskPreset>> = mutablePresets
+
+    override suspend fun save(preset: CustomTaskPreset) {
+        mutablePresets.value = mutablePresets.value.filterNot { it.id == preset.id } + preset
+    }
+
+    override suspend fun delete(presetId: String) {
+        mutablePresets.value = mutablePresets.value.filterNot { it.id == presetId }
     }
 }
 

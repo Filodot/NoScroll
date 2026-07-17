@@ -100,7 +100,7 @@ class AccessibilityAdapterControllerTest {
     }
 
     @Test
-    fun `controller exposes only supported YouTube events`() = runTest {
+    fun `controller exposes supported YouTube and Instagram events only`() = runTest {
         val scheduler = ManualAccessibilityScanScheduler()
         val controller = controller(scheduler)
         val received = mutableListOf<AccessibilityWindowEvent>()
@@ -136,6 +136,21 @@ class AccessibilityAdapterControllerTest {
         assertEquals(1, received.size)
         assertEquals(AccessibilityAdapterController.YOUTUBE_PACKAGE_NAME, received.single().packageName)
         assertEquals(AccessibilityAdapterController.TYPE_WINDOWS_CHANGED, received.single().eventType)
+
+        assertTrue(
+            controller.onAccessibilityEvent(
+                packageName = AccessibilityAdapterController.INSTAGRAM_PACKAGE_NAME,
+                eventType = AccessibilityAdapterController.TYPE_WINDOW_STATE_CHANGED,
+                elapsedRealtimeMillis = 200,
+            ),
+        )
+        scheduler.advanceBy(150)
+        runCurrent()
+        assertEquals(2, received.size)
+        assertEquals(
+            AccessibilityAdapterController.INSTAGRAM_PACKAGE_NAME,
+            received.last().packageName,
+        )
     }
 
     @Test

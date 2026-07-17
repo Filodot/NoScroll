@@ -38,8 +38,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -51,6 +49,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.filodot.noscroll.core.model.TaskDifficulty
 import com.filodot.noscroll.core.model.TaskTrigger
+import com.filodot.noscroll.core.model.TaskCompletionMode
+import com.filodot.noscroll.core.model.TaskTarget
+import com.filodot.noscroll.core.model.TaskType
 
 @Composable
 fun BlockingOverlayHost(
@@ -141,13 +142,9 @@ private fun TaskGateContent(
     task: EnforcementUiState.TaskGate,
     onAction: (BlockingOverlayAction) -> Unit,
 ) {
-    val focusRequester = remember { FocusRequester() }
-    LaunchedEffect(task.taskId, task.wrongAttempts) {
-        if (task.answerStatus != TaskAnswerStatus.CORRECT) focusRequester.requestFocus()
-    }
-
+    val appLabel = if (task.target == TaskTarget.INSTAGRAM) "Instagram" else "Shorts"
     OverlayTitle(
-        if (task.trigger == TaskTrigger.ENTRY) "Вход в Shorts" else "Пора сделать паузу",
+        if (task.trigger == TaskTrigger.ENTRY) "Вход в $appLabel" else "Пора сделать паузу",
     )
     Spacer(Modifier.height(12.dp))
     Text(
@@ -162,33 +159,32 @@ private fun TaskGateContent(
     Spacer(Modifier.height(8.dp))
     Text(
         text = if (task.trigger == TaskTrigger.ENTRY) {
-            "Сначала решите пример здесь. После этого Shorts откроются на " +
+            "Сначала выполните задание здесь. После этого $appLabel откроется на " +
                 "${task.grantMinutes} минут"
+        } else if (task.target == TaskTarget.INSTAGRAM) {
+            "Интервал использования закончился. Выполните задание, чтобы снова открыть " +
+                "Instagram на ${task.grantMinutes} минут"
         } else {
-            "Пауза началась после вашего следующего свайпа. Решите пример, чтобы снова " +
+            "Пауза началась после вашего следующего свайпа. Выполните задание, чтобы снова " +
                 "открыть Shorts на ${task.grantMinutes} минут"
         },
         style = MaterialTheme.typography.bodyLarge,
     )
     Spacer(Modifier.height(32.dp))
-    Text(
-        text = task.visualExpression,
-        modifier = Modifier.semantics {
-            contentDescription = task.spokenExpression
-        },
-        style = MaterialTheme.typography.displaySmall,
-    )
-    Spacer(Modifier.height(24.dp))
     if (task.answerStatus == TaskAnswerStatus.CORRECT) {
-        SuccessMessage("Готово — Shorts открыты на ${task.grantMinutes} минут")
-    } else {
+        SuccessMessage("Готово — $appLabel открыт на ${task.grantMinutes} минут")
+    } else if (task.completionMode == TaskCompletionMode.CHECKED_ANSWER) {
+        Text(
+            text = task.visualExpression,
+            modifier = Modifier.semantics { contentDescription = task.spokenExpression },
+            style = MaterialTheme.typography.displaySmall,
+        )
+        Spacer(Modifier.height(24.dp))
         OutlinedTextField(
             value = task.answer,
             onValueChange = { onAction(BlockingOverlayAction.UpdateAnswer(it)) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .focusRequester(focusRequester),
-            label = { Text("Ответ") },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("${task.visualExpression} =") },
             singleLine = true,
             enabled = task.answerStatus != TaskAnswerStatus.CHECKING,
             isError = task.answerStatus == TaskAnswerStatus.INCORRECT,
@@ -235,6 +231,40 @@ private fun TaskGateContent(
             ) {
                 Text("Другой пример")
             }
+        }
+    } else {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+            ),
+            shape = RoundedCornerShape(20.dp),
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text(
+                    text = when (task.type) {
+                        TaskType.PUSH_UPS -> "Физическая пауза"
+                        TaskType.CUSTOM -> "Ваше задание"
+                        TaskType.ARITHMETIC -> "Задание"
+                    },
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = task.visualExpression,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+        Button(
+            onClick = { onAction(BlockingOverlayAction.SubmitAnswer) },
+            enabled = task.answerStatus != TaskAnswerStatus.CHECKING,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        ) {
+            Text(if (task.answerStatus == TaskAnswerStatus.CHECKING) "Сохраняем…" else "Выполнено")
         }
     }
 }
@@ -283,7 +313,6 @@ private fun EscapeActions(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .imePadding()
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -299,7 +328,11 @@ private fun EscapeActions(
                 ) {
                     Text(
                         if (task?.answerStatus == TaskAnswerStatus.CORRECT) {
-                            "Открыть YouTube"
+                            if (task.target == TaskTarget.INSTAGRAM) {
+                                "Открыть Instagram"
+                            } else {
+                                "Открыть YouTube"
+                            }
                         } else {
                             "На главный экран"
                         },

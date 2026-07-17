@@ -12,6 +12,7 @@ import androidx.room.migration.Migration
         GateCycleEntity::class,
         PendingTaskEntity::class,
         EmergencyEventEntity::class,
+        CustomTaskPresetEntity::class,
     ],
     version = NoScrollDatabase.VERSION,
     exportSchema = true,
@@ -23,6 +24,8 @@ abstract class NoScrollDatabase : RoomDatabase() {
 
     abstract fun pendingTaskDao(): PendingTaskDao
 
+    abstract fun customTaskPresetDao(): CustomTaskPresetDao
+
     abstract fun emergencyEventDao(): EmergencyEventDao
 
     abstract fun taskGrantDao(): TaskGrantDao
@@ -31,7 +34,7 @@ abstract class NoScrollDatabase : RoomDatabase() {
 
     companion object {
         const val DATABASE_NAME = "noscroll.db"
-        const val VERSION = 4
+        const val VERSION = 5
 
         val MIGRATION_1_2 = Migration(1, 2) { database ->
             database.execSQL(
@@ -66,7 +69,52 @@ abstract class NoScrollDatabase : RoomDatabase() {
             )
         }
 
-        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+        val MIGRATION_4_5 = Migration(4, 5) { database ->
+            database.execSQL(
+                "ALTER TABLE daily_usage ADD COLUMN instagram_seconds INTEGER NOT NULL DEFAULT 0",
+            )
+            database.execSQL(
+                "ALTER TABLE gate_cycles ADD COLUMN instagram_used_seconds INTEGER NOT NULL DEFAULT 0",
+            )
+            database.execSQL(
+                "ALTER TABLE gate_cycles ADD COLUMN instagram_entry_cooldown_until_epoch_millis INTEGER",
+            )
+            database.execSQL(
+                "ALTER TABLE gate_cycles ADD COLUMN difficulty_load_seconds INTEGER NOT NULL DEFAULT 0",
+            )
+            database.execSQL(
+                "ALTER TABLE gate_cycles ADD COLUMN difficulty_load_updated_at_epoch_millis INTEGER",
+            )
+            database.execSQL(
+                "ALTER TABLE gate_cycles ADD COLUMN difficulty_recovery_seconds INTEGER NOT NULL DEFAULT 0",
+            )
+            database.execSQL(
+                "ALTER TABLE pending_tasks ADD COLUMN target TEXT NOT NULL DEFAULT 'YOUTUBE_SHORTS'",
+            )
+            database.execSQL(
+                "ALTER TABLE pending_tasks ADD COLUMN task_type TEXT NOT NULL DEFAULT 'ARITHMETIC'",
+            )
+            database.execSQL(
+                "ALTER TABLE pending_tasks ADD COLUMN completion_mode TEXT NOT NULL DEFAULT 'CHECKED_ANSWER'",
+            )
+            database.execSQL(
+                "ALTER TABLE pending_tasks ADD COLUMN prompt TEXT NOT NULL DEFAULT ''",
+            )
+            database.execSQL("ALTER TABLE pending_tasks ADD COLUMN custom_preset_id TEXT")
+            database.execSQL(
+                "CREATE TABLE IF NOT EXISTS custom_task_presets (" +
+                    "id TEXT NOT NULL, title TEXT NOT NULL, instruction TEXT NOT NULL, " +
+                    "enabled INTEGER NOT NULL, created_at_epoch_millis INTEGER NOT NULL, " +
+                    "PRIMARY KEY(id))",
+            )
+        }
+
+        val ALL_MIGRATIONS = arrayOf(
+            MIGRATION_1_2,
+            MIGRATION_2_3,
+            MIGRATION_3_4,
+            MIGRATION_4_5,
+        )
 
         fun build(context: Context, name: String = DATABASE_NAME): NoScrollDatabase =
             Room.databaseBuilder(context, NoScrollDatabase::class.java, name)

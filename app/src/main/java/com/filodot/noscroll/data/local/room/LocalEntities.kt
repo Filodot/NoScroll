@@ -13,6 +13,8 @@ data class DailyUsageEntity(
     val youtubeSeconds: Long,
     @ColumnInfo(name = "shorts_seconds")
     val shortsSeconds: Long,
+    @ColumnInfo(name = "instagram_seconds", defaultValue = "0")
+    val instagramSeconds: Long = 0,
     @ColumnInfo(name = "emergency_youtube_seconds", defaultValue = "0")
     val emergencyYoutubeSeconds: Long,
     @ColumnInfo(name = "gates_shown")
@@ -43,6 +45,16 @@ data class GateCycleEntity(
     val lastIntervalBlockAtEpochMillis: Long?,
     @ColumnInfo(name = "entry_cooldown_until_epoch_millis")
     val entryCooldownUntilEpochMillis: Long?,
+    @ColumnInfo(name = "instagram_used_seconds", defaultValue = "0")
+    val instagramUsedSeconds: Long = 0,
+    @ColumnInfo(name = "instagram_entry_cooldown_until_epoch_millis")
+    val instagramEntryCooldownUntilEpochMillis: Long? = null,
+    @ColumnInfo(name = "difficulty_load_seconds", defaultValue = "0")
+    val difficultyLoadSeconds: Long = 0,
+    @ColumnInfo(name = "difficulty_load_updated_at_epoch_millis")
+    val difficultyLoadUpdatedAtEpochMillis: Long? = null,
+    @ColumnInfo(name = "difficulty_recovery_seconds", defaultValue = "0")
+    val difficultyRecoverySeconds: Long = 0,
     @ColumnInfo(name = "updated_at_epoch_millis")
     val updatedAtEpochMillis: Long,
 )
@@ -67,6 +79,27 @@ data class PendingTaskEntity(
     val difficulty: String,
     @ColumnInfo(defaultValue = "'INTERVAL'")
     val trigger: String,
+    @ColumnInfo(defaultValue = "'YOUTUBE_SHORTS'")
+    val target: String = "YOUTUBE_SHORTS",
+    @ColumnInfo(name = "task_type", defaultValue = "'ARITHMETIC'")
+    val taskType: String = "ARITHMETIC",
+    @ColumnInfo(name = "completion_mode", defaultValue = "'CHECKED_ANSWER'")
+    val completionMode: String = "CHECKED_ANSWER",
+    @ColumnInfo(defaultValue = "''")
+    val prompt: String = "",
+    @ColumnInfo(name = "custom_preset_id")
+    val customPresetId: String? = null,
+)
+
+@Entity(tableName = "custom_task_presets")
+data class CustomTaskPresetEntity(
+    @PrimaryKey
+    val id: String,
+    val title: String,
+    val instruction: String,
+    val enabled: Boolean,
+    @ColumnInfo(name = "created_at_epoch_millis")
+    val createdAtEpochMillis: Long,
 )
 
 @Entity(tableName = "emergency_events")

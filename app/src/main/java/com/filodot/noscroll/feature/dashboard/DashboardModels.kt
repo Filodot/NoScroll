@@ -25,6 +25,18 @@ sealed interface DailyLimitUiState {
     data object Unavailable : DailyLimitUiState
 }
 
+sealed interface InstagramLimitUiState {
+    data class Enabled(
+        val cycleUsedSeconds: Long,
+        val intervalSeconds: Long,
+        val todaySeconds: Long,
+        val accessLocked: Boolean = false,
+        val unlockedUntilLabel: String? = null,
+    ) : InstagramLimitUiState
+
+    data object Disabled : InstagramLimitUiState
+}
+
 data class EmergencyUiState(
     val active: Boolean = false,
     val activeSinceLabel: String? = null,
@@ -42,6 +54,11 @@ data class DashboardUiState(
         usedSeconds = 18 * 60,
         limitSeconds = 45 * 60,
     ),
+    val instagram: InstagramLimitUiState = InstagramLimitUiState.Enabled(
+        cycleUsedSeconds = 0,
+        intervalSeconds = 600,
+        todaySeconds = 0,
+    ),
     val emergency: EmergencyUiState = EmergencyUiState(),
 ) {
     val protectionStatus: DashboardProtectionStatus
@@ -52,7 +69,9 @@ data class DashboardUiState(
         }
 
     val emergencyAvailable: Boolean
-        get() = shorts !is ShortsLimitUiState.Disabled || daily !is DailyLimitUiState.Disabled
+        get() = shorts !is ShortsLimitUiState.Disabled ||
+            instagram !is InstagramLimitUiState.Disabled ||
+            daily !is DailyLimitUiState.Disabled
 
     val hasUsageAccessProblem: Boolean
         get() = accessibilityEnabled && daily is DailyLimitUiState.Unavailable
@@ -69,6 +88,7 @@ sealed interface DashboardAction {
     data object OpenAccessibilitySettings : DashboardAction
     data object OpenUsageAccessSettings : DashboardAction
     data object OpenChallenge : DashboardAction
+    data object OpenInstagramChallenge : DashboardAction
     data class SetEmergencyEnabled(val enabled: Boolean) : DashboardAction
 }
 

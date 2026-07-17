@@ -2,11 +2,15 @@ package com.filodot.noscroll.data.local.room
 
 import com.filodot.noscroll.core.model.ArithmeticOperation
 import com.filodot.noscroll.core.model.DailyUsage
+import com.filodot.noscroll.core.model.CustomTaskPreset
 import com.filodot.noscroll.core.model.EmergencyActivationSource
 import com.filodot.noscroll.core.model.EmergencyEvent
 import com.filodot.noscroll.core.model.GateCycle
 import com.filodot.noscroll.core.model.PendingTask
 import com.filodot.noscroll.core.model.TaskDifficulty
+import com.filodot.noscroll.core.model.TaskCompletionMode
+import com.filodot.noscroll.core.model.TaskTarget
+import com.filodot.noscroll.core.model.TaskType
 import com.filodot.noscroll.core.model.TaskTrigger
 import java.time.Instant
 import java.time.LocalDate
@@ -15,6 +19,7 @@ fun DailyUsage.toEntity(): DailyUsageEntity = DailyUsageEntity(
     localDate = localDate.toString(),
     youtubeSeconds = youtubeSeconds,
     shortsSeconds = shortsSeconds,
+    instagramSeconds = instagramSeconds,
     emergencyYoutubeSeconds = emergencyYoutubeSeconds,
     gatesShown = gatesShown,
     tasksSolved = tasksSolved,
@@ -27,6 +32,7 @@ fun DailyUsageEntity.toModel(): DailyUsage = DailyUsage(
     localDate = LocalDate.parse(localDate),
     youtubeSeconds = youtubeSeconds,
     shortsSeconds = shortsSeconds,
+    instagramSeconds = instagramSeconds,
     emergencyYoutubeSeconds = emergencyYoutubeSeconds,
     gatesShown = gatesShown,
     tasksSolved = tasksSolved,
@@ -43,6 +49,11 @@ fun GateCycle.toEntity(): GateCycleEntity = GateCycleEntity(
     intervalBlockStreak = intervalBlockStreak,
     lastIntervalBlockAtEpochMillis = lastIntervalBlockAt?.toEpochMilli(),
     entryCooldownUntilEpochMillis = entryCooldownUntil?.toEpochMilli(),
+    instagramUsedSeconds = instagramUsedSeconds,
+    instagramEntryCooldownUntilEpochMillis = instagramEntryCooldownUntil?.toEpochMilli(),
+    difficultyLoadSeconds = difficultyLoadSeconds,
+    difficultyLoadUpdatedAtEpochMillis = difficultyLoadUpdatedAt?.toEpochMilli(),
+    difficultyRecoverySeconds = difficultyRecoverySeconds,
     updatedAtEpochMillis = updatedAt.toEpochMilli(),
 )
 
@@ -54,6 +65,12 @@ fun GateCycleEntity.toModel(): GateCycle = GateCycle(
     intervalBlockStreak = intervalBlockStreak,
     lastIntervalBlockAt = lastIntervalBlockAtEpochMillis?.let(Instant::ofEpochMilli),
     entryCooldownUntil = entryCooldownUntilEpochMillis?.let(Instant::ofEpochMilli),
+    instagramUsedSeconds = instagramUsedSeconds,
+    instagramEntryCooldownUntil =
+        instagramEntryCooldownUntilEpochMillis?.let(Instant::ofEpochMilli),
+    difficultyLoadSeconds = difficultyLoadSeconds,
+    difficultyLoadUpdatedAt = difficultyLoadUpdatedAtEpochMillis?.let(Instant::ofEpochMilli),
+    difficultyRecoverySeconds = difficultyRecoverySeconds,
     updatedAt = Instant.ofEpochMilli(updatedAtEpochMillis),
 )
 
@@ -68,6 +85,11 @@ fun PendingTask.toEntity(): PendingTaskEntity = PendingTaskEntity(
     solved = solved,
     difficulty = difficulty.name,
     trigger = trigger.name,
+    target = target.name,
+    taskType = type.name,
+    completionMode = completionMode.name,
+    prompt = prompt,
+    customPresetId = customPresetId,
 )
 
 fun PendingTaskEntity.toModel(): PendingTask = PendingTask(
@@ -81,6 +103,27 @@ fun PendingTaskEntity.toModel(): PendingTask = PendingTask(
     solved = solved,
     difficulty = enumValueOf<TaskDifficulty>(difficulty),
     trigger = enumValueOf<TaskTrigger>(trigger),
+    target = enumValueOf<TaskTarget>(target),
+    type = enumValueOf<TaskType>(taskType),
+    completionMode = enumValueOf<TaskCompletionMode>(completionMode),
+    prompt = prompt,
+    customPresetId = customPresetId,
+)
+
+fun CustomTaskPreset.toEntity(): CustomTaskPresetEntity = CustomTaskPresetEntity(
+    id = id,
+    title = title,
+    instruction = instruction,
+    enabled = enabled,
+    createdAtEpochMillis = createdAt.toEpochMilli(),
+)
+
+fun CustomTaskPresetEntity.toModel(): CustomTaskPreset = CustomTaskPreset(
+    id = id,
+    title = title,
+    instruction = instruction,
+    enabled = enabled,
+    createdAt = Instant.ofEpochMilli(createdAtEpochMillis),
 )
 
 fun EmergencyEvent.toEntity(): EmergencyEventEntity = EmergencyEventEntity(

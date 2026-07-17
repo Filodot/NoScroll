@@ -97,8 +97,8 @@ class NoScrollAccessibilityService :
     override suspend fun capture(event: AccessibilityWindowEvent): WindowSnapshot? =
         controller.capture(event)
 
-    /** Leaves the Shorts player first, then opens the in-app challenge screen. */
-    fun ejectShortsAndOpenChallenge() {
+    /** Leaves the monitored app first, then opens the in-app challenge screen. */
+    fun ejectTargetAndOpenChallenge() {
         mainHandler.post {
             performGlobalAction(GLOBAL_ACTION_BACK)
             mainHandler.postDelayed(
@@ -124,6 +124,9 @@ class NoScrollAccessibilityService :
             )
         }
     }
+
+    @Deprecated("Use ejectTargetAndOpenChallenge")
+    fun ejectShortsAndOpenChallenge() = ejectTargetAndOpenChallenge()
 
     private fun readScreenState(): ScreenStateSample {
         val powerManager = getSystemService(PowerManager::class.java)

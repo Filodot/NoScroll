@@ -16,6 +16,8 @@ data class LimitsValues(
     val shortsMinutes: Int = UserSettings.DEFAULT_SHORTS_INTERVAL_MINUTES,
     val dailyEnabled: Boolean = true,
     val dailyMinutes: Int = UserSettings.DEFAULT_DAILY_LIMIT_MINUTES,
+    val instagramEnabled: Boolean = true,
+    val instagramMinutes: Int = UserSettings.DEFAULT_INSTAGRAM_INTERVAL_MINUTES,
 )
 
 data class LimitsUiState(
@@ -36,18 +38,24 @@ data class LimitsUiState(
             draft.shortsEnabled && draft.dailyEnabled ->
                 "Через каждые ${draft.shortsMinutes} минут Shorts появится пример. " +
                     "После ${draft.dailyMinutes} минут всего YouTube приложение будет закрыто " +
-                    "до полуночи или Emergency Stop."
+                    "до полуночи или Emergency Stop." + instagramSummary()
 
             draft.shortsEnabled ->
                 "Через каждые ${draft.shortsMinutes} минут Shorts появится пример. " +
-                    "Дневной лимит YouTube выключен."
+                    "Дневной лимит YouTube выключен." + instagramSummary()
 
             draft.dailyEnabled ->
                 "Паузы в Shorts выключены. После ${draft.dailyMinutes} минут всего YouTube " +
-                    "приложение будет закрыто до полуночи или Emergency Stop."
+                    "приложение будет закрыто до полуночи или Emergency Stop." + instagramSummary()
 
-            else -> "Паузы в Shorts и дневной лимит выключены."
+            else -> "Паузы в Shorts и дневной лимит выключены." + instagramSummary()
         }
+
+    private fun instagramSummary(): String = if (draft.instagramEnabled) {
+        " Instagram доступен интервалами по ${draft.instagramMinutes} минут."
+    } else {
+        " Ограничение Instagram выключено."
+    }
 }
 
 sealed interface LimitsAction {
@@ -56,10 +64,14 @@ sealed interface LimitsAction {
     data class SetShortsMinutes(val minutes: Int) : LimitsAction
     data class SetDailyEnabled(val enabled: Boolean) : LimitsAction
     data class SetDailyMinutes(val minutes: Int) : LimitsAction
+    data class SetInstagramEnabled(val enabled: Boolean) : LimitsAction
+    data class SetInstagramMinutes(val minutes: Int) : LimitsAction
     data object DecrementShorts : LimitsAction
     data object IncrementShorts : LimitsAction
     data object DecrementDaily : LimitsAction
     data object IncrementDaily : LimitsAction
+    data object DecrementInstagram : LimitsAction
+    data object IncrementInstagram : LimitsAction
     data object Save : LimitsAction
     data object Cancel : LimitsAction
 }
@@ -102,6 +114,15 @@ class LimitsStateHolder(
             ) { it.copy(dailyEnabled = action.enabled) }
 
             is LimitsAction.SetDailyMinutes -> setDailyMinutes(action.minutes)
+            is LimitsAction.SetInstagramEnabled -> updateDraft(
+                announcement = if (action.enabled) {
+                    "Ограничение Instagram включено"
+                } else {
+                    "Ограничение Instagram выключено"
+                },
+            ) { it.copy(instagramEnabled = action.enabled) }
+
+            is LimitsAction.SetInstagramMinutes -> setInstagramMinutes(action.minutes)
             LimitsAction.DecrementShorts ->
                 setShortsMinutes(mutableState.value.draft.shortsMinutes - 1)
 
@@ -117,6 +138,12 @@ class LimitsStateHolder(
                 setDailyMinutes(
                     mutableState.value.draft.dailyMinutes + DAILY_LIMIT_STEP_MINUTES,
                 )
+
+            LimitsAction.DecrementInstagram ->
+                setInstagramMinutes(mutableState.value.draft.instagramMinutes - 1)
+
+            LimitsAction.IncrementInstagram ->
+                setInstagramMinutes(mutableState.value.draft.instagramMinutes + 1)
 
             LimitsAction.Save -> save()
             LimitsAction.Cancel -> cancel()
@@ -166,6 +193,16 @@ class LimitsStateHolder(
         }
     }
 
+    private fun setInstagramMinutes(minutes: Int) {
+        val normalized = minutes.coerceIn(SHORTS_INTERVAL_RANGE)
+        updateDraft(announcement = "Интервал Instagram: $normalized минут") {
+            it.copy(
+                preset = LimitPreset.CUSTOM,
+                instagramMinutes = normalized,
+            )
+        }
+    }
+
     private fun save() {
         val current = mutableState.value
         if (!current.hasUnsavedChanges) return
@@ -205,6 +242,7 @@ class LimitsStateHolder(
                     DAILY_LIMIT_STEP_MINUTES / 2) /
                     DAILY_LIMIT_STEP_MINUTES * DAILY_LIMIT_STEP_MINUTES
                 ).coerceIn(DAILY_LIMIT_RANGE),
+            instagramMinutes = values.instagramMinutes.coerceIn(SHORTS_INTERVAL_RANGE),
         )
 
         fun presetLabel(preset: LimitPreset): String = when (preset) {

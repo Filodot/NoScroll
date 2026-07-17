@@ -5,6 +5,7 @@ import com.filodot.noscroll.core.model.ArithmeticOperation
 import com.filodot.noscroll.core.model.PendingTask
 import com.filodot.noscroll.core.model.TaskDifficulty
 import com.filodot.noscroll.core.model.TaskTrigger
+import com.filodot.noscroll.core.model.TaskTarget
 import java.time.Instant
 import java.util.UUID
 import kotlin.math.max
@@ -72,9 +73,10 @@ class LocalArithmeticTaskEngine(
     fun requireTask(
         difficulty: TaskDifficulty = TaskDifficulty.MEDIUM,
         trigger: TaskTrigger = TaskTrigger.INTERVAL,
+        target: TaskTarget = TaskTarget.YOUTUBE_SHORTS,
     ): PendingTask {
         state.pendingTask?.let { return it }
-        return generateAndStoreTask(difficulty, trigger)
+        return generateAndStoreTask(difficulty, trigger, target)
     }
 
     @Synchronized
@@ -111,7 +113,7 @@ class LocalArithmeticTaskEngine(
         }
 
         return TaskReplacementResult.Replaced(
-            generateAndStoreTask(current.difficulty, current.trigger),
+            generateAndStoreTask(current.difficulty, current.trigger, current.target),
         )
     }
 
@@ -130,6 +132,7 @@ class LocalArithmeticTaskEngine(
     private fun generateAndStoreTask(
         difficulty: TaskDifficulty,
         trigger: TaskTrigger,
+        target: TaskTarget,
     ): PendingTask {
         val recent = state.recentExamples.toSet()
         var selected: ArithmeticExample? = null
@@ -152,6 +155,7 @@ class LocalArithmeticTaskEngine(
             createdAt = createdAt,
             difficulty = difficulty,
             trigger = trigger,
+            target = target,
         )
         state = state.copy(
             pendingTask = task,

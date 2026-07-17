@@ -14,6 +14,7 @@ import androidx.datastore.preferences.preferencesDataStoreFile
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.filodot.noscroll.core.contracts.SettingsRepository
 import com.filodot.noscroll.core.model.LimitPreset
+import com.filodot.noscroll.core.model.TaskType
 import com.filodot.noscroll.core.model.UserSettings
 import java.io.IOException
 import java.time.Instant
@@ -49,6 +50,17 @@ class DataStoreSettingsRepository(
             preferences[Keys.SHORTS_INTERVAL_MINUTES] = settings.shortsIntervalMinutes
             preferences[Keys.DAILY_LIMIT_ENABLED] = settings.dailyLimitEnabled
             preferences[Keys.DAILY_LIMIT_MINUTES] = settings.dailyLimitMinutes
+            preferences[Keys.INSTAGRAM_GATE_ENABLED] = settings.instagramGateEnabled
+            preferences[Keys.INSTAGRAM_INTERVAL_MINUTES] = settings.instagramIntervalMinutes
+            preferences[Keys.DIFFICULTY_MEDIUM_THRESHOLD_MINUTES] =
+                settings.difficultyMediumThresholdMinutes
+            preferences[Keys.DIFFICULTY_HARD_THRESHOLD_MINUTES] =
+                settings.difficultyHardThresholdMinutes
+            preferences[Keys.DIFFICULTY_DECAY_BREAK_MINUTES] =
+                settings.difficultyDecayBreakMinutes
+            preferences[Keys.ENABLED_TASK_TYPES] = settings.enabledTaskTypes
+                .sortedBy(TaskType::ordinal)
+                .joinToString(",", transform = TaskType::name)
             preferences[Keys.PRESET] = settings.preset.name
             preferences[Keys.EMERGENCY_ACTIVE] = settings.emergencyActive
             preferences[Keys.DETECTOR_RULES_VERSION] = settings.detectorRulesVersion
@@ -77,6 +89,14 @@ private object Keys {
     val SHORTS_INTERVAL_MINUTES = intPreferencesKey("shorts_interval_minutes")
     val DAILY_LIMIT_ENABLED = booleanPreferencesKey("daily_limit_enabled")
     val DAILY_LIMIT_MINUTES = intPreferencesKey("daily_limit_minutes")
+    val INSTAGRAM_GATE_ENABLED = booleanPreferencesKey("instagram_gate_enabled")
+    val INSTAGRAM_INTERVAL_MINUTES = intPreferencesKey("instagram_interval_minutes")
+    val DIFFICULTY_MEDIUM_THRESHOLD_MINUTES =
+        intPreferencesKey("difficulty_medium_threshold_minutes")
+    val DIFFICULTY_HARD_THRESHOLD_MINUTES =
+        intPreferencesKey("difficulty_hard_threshold_minutes")
+    val DIFFICULTY_DECAY_BREAK_MINUTES = intPreferencesKey("difficulty_decay_break_minutes")
+    val ENABLED_TASK_TYPES = stringPreferencesKey("enabled_task_types")
     val PRESET = stringPreferencesKey("preset")
     val EMERGENCY_ACTIVE = booleanPreferencesKey("emergency_active")
     val ACCESSIBILITY_DISCLOSURE_ACCEPTED_AT =
@@ -97,6 +117,23 @@ private fun preferencesToSettings(preferences: Preferences): UserSettings {
             ?: defaults.shortsIntervalMinutes,
         dailyLimitEnabled = preferences[Keys.DAILY_LIMIT_ENABLED] ?: defaults.dailyLimitEnabled,
         dailyLimitMinutes = preferences[Keys.DAILY_LIMIT_MINUTES] ?: defaults.dailyLimitMinutes,
+        instagramGateEnabled = preferences[Keys.INSTAGRAM_GATE_ENABLED]
+            ?: defaults.instagramGateEnabled,
+        instagramIntervalMinutes = preferences[Keys.INSTAGRAM_INTERVAL_MINUTES]
+            ?: defaults.instagramIntervalMinutes,
+        difficultyMediumThresholdMinutes =
+            preferences[Keys.DIFFICULTY_MEDIUM_THRESHOLD_MINUTES]
+                ?: defaults.difficultyMediumThresholdMinutes,
+        difficultyHardThresholdMinutes = preferences[Keys.DIFFICULTY_HARD_THRESHOLD_MINUTES]
+            ?: defaults.difficultyHardThresholdMinutes,
+        difficultyDecayBreakMinutes = preferences[Keys.DIFFICULTY_DECAY_BREAK_MINUTES]
+            ?: defaults.difficultyDecayBreakMinutes,
+        enabledTaskTypes = preferences[Keys.ENABLED_TASK_TYPES]
+            ?.split(',')
+            ?.mapNotNull { stored -> TaskType.entries.firstOrNull { it.name == stored } }
+            ?.toSet()
+            ?.takeIf(Set<TaskType>::isNotEmpty)
+            ?: defaults.enabledTaskTypes,
         preset = preferences[Keys.PRESET]
             ?.let { stored -> enumValues<LimitPreset>().firstOrNull { it.name == stored } }
             ?: defaults.preset,

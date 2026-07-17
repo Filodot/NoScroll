@@ -39,12 +39,17 @@ import com.filodot.noscroll.core.model.GateCycle
 import com.filodot.noscroll.core.model.DailyUsage
 import com.filodot.noscroll.core.model.PendingTask
 import com.filodot.noscroll.core.model.ShortsDetectionState
+import com.filodot.noscroll.core.model.CustomTaskPreset
+import com.filodot.noscroll.core.model.TaskDifficulty
+import com.filodot.noscroll.core.model.TaskTarget
+import com.filodot.noscroll.core.model.TaskType
 import com.filodot.noscroll.core.model.UserSettings
 import com.filodot.noscroll.feature.dashboard.DashboardAction
 import com.filodot.noscroll.feature.dashboard.DashboardScreen
 import com.filodot.noscroll.feature.dashboard.DashboardUiState
 import com.filodot.noscroll.feature.dashboard.DailyLimitUiState
 import com.filodot.noscroll.feature.dashboard.EmergencyUiState
+import com.filodot.noscroll.feature.dashboard.InstagramLimitUiState
 import com.filodot.noscroll.feature.dashboard.ShortsLimitUiState
 import com.filodot.noscroll.feature.history.EmergencyHistoryAction
 import com.filodot.noscroll.feature.history.EmergencyHistoryEffect
@@ -73,6 +78,9 @@ import com.filodot.noscroll.feature.settings.SettingsAction
 import com.filodot.noscroll.feature.settings.SettingsScreen
 import com.filodot.noscroll.feature.settings.SettingsUiState
 import com.filodot.noscroll.feature.settings.SystemAccessUiStatus
+import com.filodot.noscroll.feature.tasks.TaskSettingsAction
+import com.filodot.noscroll.feature.tasks.TaskSettingsScreen
+import com.filodot.noscroll.feature.tasks.TaskSettingsUiState
 import com.filodot.noscroll.monitoring.runtime.MonitoringDiagnostics
 import com.filodot.noscroll.monitoring.runtime.MonitoringCoordinator
 import com.filodot.noscroll.platform.SystemAccessSnapshot
@@ -109,6 +117,7 @@ fun NoScrollApp(
     val dailyUsage by appGraph.usageRepository.dailyUsage.collectAsStateWithLifecycle()
     val gateCycle by appGraph.usageRepository.gateCycle.collectAsStateWithLifecycle()
     val pendingTask by appGraph.taskRepository.pendingTask.collectAsStateWithLifecycle()
+    val taskPresets by appGraph.taskPresetRepository.presets.collectAsStateWithLifecycle()
     val emergencyState by appGraph.emergencyRepository.state.collectAsStateWithLifecycle()
     val activeEnforcement = appGraph.monitoring?.let { monitoring ->
         val state by monitoring.enforcement.collectAsStateWithLifecycle()
@@ -181,6 +190,8 @@ fun NoScrollApp(
                 shortsMinutes = settings.shortsIntervalMinutes,
                 dailyEnabled = settings.dailyLimitEnabled,
                 dailyMinutes = settings.dailyLimitMinutes,
+                instagramEnabled = settings.instagramGateEnabled,
+                instagramMinutes = settings.instagramIntervalMinutes,
             ),
             emitEffect = { effect ->
                 if (effect is LimitsEffect.Saved) scope.launch {
@@ -192,6 +203,8 @@ fun NoScrollApp(
                             shortsIntervalMinutes = effect.values.shortsMinutes,
                             dailyLimitEnabled = effect.values.dailyEnabled,
                             dailyLimitMinutes = effect.values.dailyMinutes,
+                            instagramGateEnabled = effect.values.instagramEnabled,
+                            instagramIntervalMinutes = effect.values.instagramMinutes,
                         ),
                     )
                     snackbarHostState.showSnackbar("Ограничения сохранены")
@@ -330,18 +343,11 @@ fun NoScrollApp(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 refreshOnboardingPermissions(onboardingHolder, appGraph)
-                if (settings.onboardingCompleted) {
-                    scope.launch { appGraph.monitoring?.prepareChallengeForApp() }
-                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    LaunchedEffect(appGraph, settings.onboardingCompleted) {
-        if (settings.onboardingCompleted) appGraph.monitoring?.prepareChallengeForApp()
-    }
-
     val initialRoute = remember(appGraph) {
         if (appGraph.settingsRepository.settings.value.onboardingCompleted) {
             AppRoute.Dashboard.path
@@ -381,6 +387,12 @@ fun NoScrollApp(
                                     appGraph.monitoring?.prepareChallengeForApp()
                                 }
 
+                                DashboardAction.OpenInstagramChallenge -> scope.launch {
+                                    appGraph.monitoring?.prepareChallengeForApp(
+                                        TaskTarget.INSTAGRAM,
+                                    )
+                                }
+
                                 is DashboardAction.SetEmergencyEnabled -> {
                                     if (action.enabled) {
                                         emergencyHolder.dispatch(
@@ -416,6 +428,107 @@ fun NoScrollApp(
             composable(AppRoute.Limits.path) {
                 MainDestinationScaffold(navController, AppRoute.Limits) {
                     LimitsRoute(limitsHolder)
+                }
+            }
+            composable(AppRoute.Tasks.path) {
+                MainDestinationScaffold(navController, AppRoute.Tasks) {
+                    TaskSettingsScreen(
+                        state = buildTaskSettingsState(settings, gateCycle, taskPresets),
+                        onAction = { action ->
+                            when (action) {
+                                is TaskSettingsAction.SetMediumThreshold -> scope.launch {
+                                    val current = appGraph.settingsRepository.settings.value
+                                    val medium = action.minutes.coerceIn(1, 120)
+                                    appGraph.settingsRepository.save(
+                                        current.copy(
+                                            difficultyMediumThresholdMinutes = medium,
+                                            difficultyHardThresholdMinutes =
+                                                current.difficultyHardThresholdMinutes
+                                                    .coerceAtLeast(medium + 1),
+                                        ),
+                                    )
+                                }
+
+                                is TaskSettingsAction.SetHardThreshold -> scope.launch {
+                                    val current = appGraph.settingsRepository.settings.value
+                                    appGraph.settingsRepository.save(
+                                        current.copy(
+                                            difficultyHardThresholdMinutes = action.minutes.coerceIn(
+                                                current.difficultyMediumThresholdMinutes + 1,
+                                                240,
+                                            ),
+                                        ),
+                                    )
+                                }
+
+                                is TaskSettingsAction.SetDecayBreakMinutes -> scope.launch {
+                                    val current = appGraph.settingsRepository.settings.value
+                                    appGraph.settingsRepository.save(
+                                        current.copy(
+                                            difficultyDecayBreakMinutes =
+                                                action.minutes.coerceIn(1, 30),
+                                        ),
+                                    )
+                                }
+
+                                is TaskSettingsAction.SetTaskTypeEnabled -> scope.launch {
+                                    val current = appGraph.settingsRepository.settings.value
+                                    val updated = if (action.enabled) {
+                                        current.enabledTaskTypes + action.type
+                                    } else {
+                                        current.enabledTaskTypes - action.type
+                                    }.ifEmpty { setOf(TaskType.ARITHMETIC) }
+                                    appGraph.settingsRepository.save(
+                                        current.copy(enabledTaskTypes = updated),
+                                    )
+                                }
+
+                                is TaskSettingsAction.CreatePreset -> scope.launch {
+                                    val preset = CustomTaskPreset(
+                                        id = UUID.randomUUID().toString(),
+                                        title = action.title,
+                                        instruction = action.instruction,
+                                        createdAt = Instant.now(),
+                                    )
+                                    appGraph.taskPresetRepository.save(preset)
+                                    val current = appGraph.settingsRepository.settings.value
+                                    appGraph.settingsRepository.save(
+                                        current.copy(
+                                            enabledTaskTypes = current.enabledTaskTypes +
+                                                TaskType.CUSTOM,
+                                        ),
+                                    )
+                                    snackbarHostState.showSnackbar("Пресет сохранён и включён")
+                                }
+
+                                is TaskSettingsAction.SetPresetEnabled -> scope.launch {
+                                    appGraph.taskPresetRepository.save(
+                                        action.preset.copy(enabled = action.enabled),
+                                    )
+                                }
+
+                                is TaskSettingsAction.DeletePreset -> scope.launch {
+                                    appGraph.taskPresetRepository.delete(action.presetId)
+                                    val remaining = appGraph.taskPresetRepository.presets.value
+                                        .filterNot { it.id == action.presetId }
+                                    if (remaining.none(CustomTaskPreset::enabled)) {
+                                        val current = appGraph.settingsRepository.settings.value
+                                        appGraph.settingsRepository.save(
+                                            current.copy(
+                                                enabledTaskTypes =
+                                                    (current.enabledTaskTypes - TaskType.CUSTOM)
+                                                        .ifEmpty { setOf(TaskType.ARITHMETIC) },
+                                            ),
+                                        )
+                                    }
+                                }
+
+                                is TaskSettingsAction.PrepareAccess -> scope.launch {
+                                    appGraph.monitoring?.prepareChallengeForApp(action.target)
+                                }
+                            }
+                        },
+                    )
                 }
             }
             composable(AppRoute.Settings.path) {
@@ -534,9 +647,17 @@ private fun InAppChallengeHost(
                     }
 
                     BlockingOverlayEffect.OpenYouTube -> scope.launch {
+                        val target = (holder.state.value.enforcement as? EnforcementUiState.TaskGate)
+                            ?.target ?: TaskTarget.YOUTUBE_SHORTS
                         monitoring.completeChallengePresentation()
-                        context.openYouTube {
-                            snackbarHostState.showSnackbar("Не удалось открыть YouTube")
+                        context.openTarget(target) {
+                            snackbarHostState.showSnackbar(
+                                if (target == TaskTarget.INSTAGRAM) {
+                                    "Не удалось открыть Instagram"
+                                } else {
+                                    "Не удалось открыть YouTube"
+                                },
+                            )
                         }
                     }
 
@@ -582,7 +703,7 @@ private fun buildDashboardState(
                 accessLocked = !(
                     settings.emergencyActive || emergencyState.isActive
                     ) && (
-                    pendingTask != null ||
+                    pendingTask?.target == TaskTarget.YOUTUBE_SHORTS ||
                         cycle.entryCooldownUntil?.isAfter(now) != true
                     ),
                 unlockedUntilLabel = cycle.entryCooldownUntil
@@ -592,6 +713,25 @@ private fun buildDashboardState(
             )
         } else {
             ShortsLimitUiState.Disabled
+        },
+        instagram = if (settings.instagramGateEnabled) {
+            InstagramLimitUiState.Enabled(
+                cycleUsedSeconds = cycle.instagramUsedSeconds,
+                intervalSeconds = settings.instagramIntervalMinutes.toLong() * 60,
+                todaySeconds = usage.instagramSeconds,
+                accessLocked = !(
+                    settings.emergencyActive || emergencyState.isActive
+                    ) && (
+                    pendingTask?.target == TaskTarget.INSTAGRAM ||
+                        cycle.instagramEntryCooldownUntil?.isAfter(now) != true
+                    ),
+                unlockedUntilLabel = cycle.instagramEntryCooldownUntil
+                    ?.takeIf { it.isAfter(now) }
+                    ?.atZone(ZoneId.systemDefault())
+                    ?.format(DateTimeFormatter.ofPattern("HH:mm")),
+            )
+        } else {
+            InstagramLimitUiState.Disabled
         },
         daily = when {
             !settings.dailyLimitEnabled -> DailyLimitUiState.Disabled
@@ -644,6 +784,29 @@ private fun buildSettingsState(
     ),
     appVersionLabel = access.appVersionName,
 )
+
+private fun buildTaskSettingsState(
+    settings: UserSettings,
+    cycle: GateCycle,
+    presets: List<CustomTaskPreset>,
+): TaskSettingsUiState {
+    val loadMinutes = (cycle.difficultyLoadSeconds / 60).toInt()
+    val difficulty = when {
+        loadMinutes >= settings.difficultyHardThresholdMinutes -> TaskDifficulty.HARD
+        loadMinutes >= settings.difficultyMediumThresholdMinutes -> TaskDifficulty.MEDIUM
+        else -> TaskDifficulty.EASY
+    }
+    return TaskSettingsUiState(
+        loadMinutes = loadMinutes,
+        currentDifficulty = difficulty,
+        mediumThresholdMinutes = settings.difficultyMediumThresholdMinutes,
+        hardThresholdMinutes = settings.difficultyHardThresholdMinutes,
+        decayBreakMinutes = settings.difficultyDecayBreakMinutes,
+        enabledTypes = settings.enabledTaskTypes,
+        presets = presets,
+        instagramEnabled = settings.instagramGateEnabled,
+    )
+}
 
 private fun refreshOnboardingPermissions(
     holder: OnboardingStateHolder,
@@ -702,8 +865,15 @@ private fun Context.openSystemSettings(
     }
 }
 
-private suspend fun Context.openYouTube(onUnavailable: suspend () -> Unit) {
-    val intent = packageManager.getLaunchIntentForPackage(YOUTUBE_PACKAGE_NAME)
+private suspend fun Context.openTarget(
+    target: TaskTarget,
+    onUnavailable: suspend () -> Unit,
+) {
+    val packageName = when (target) {
+        TaskTarget.YOUTUBE_SHORTS -> YOUTUBE_PACKAGE_NAME
+        TaskTarget.INSTAGRAM -> INSTAGRAM_PACKAGE_NAME
+    }
+    val intent = packageManager.getLaunchIntentForPackage(packageName)
         ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     if (intent == null) {
         onUnavailable()
@@ -769,13 +939,15 @@ private sealed class AppRoute(
     data object Onboarding : AppRoute("onboarding", "Onboarding", "O")
     data object Dashboard : AppRoute("dashboard", "Сегодня", "С")
     data object Limits : AppRoute("limits", "Ограничения", "О")
+    data object Tasks : AppRoute("tasks", "Задания", "З")
     data object Settings : AppRoute("settings", "Настройки", "Н")
     data object History : AppRoute("history", "История", "И")
     data object Emergency : AppRoute("emergency", "Emergency", "E")
 
     companion object {
-        val topLevel = listOf(Dashboard, Limits, Settings)
+        val topLevel = listOf(Dashboard, Limits, Tasks, Settings)
     }
 }
 
 private const val YOUTUBE_PACKAGE_NAME = "com.google.android.youtube"
+private const val INSTAGRAM_PACKAGE_NAME = "com.instagram.android"

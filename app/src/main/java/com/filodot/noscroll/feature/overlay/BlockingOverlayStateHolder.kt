@@ -5,6 +5,9 @@ import com.filodot.noscroll.core.emergency.MIN_REASON_LENGTH
 import com.filodot.noscroll.core.model.EmergencyActivationSource
 import com.filodot.noscroll.core.model.TaskDifficulty
 import com.filodot.noscroll.core.model.TaskTrigger
+import com.filodot.noscroll.core.model.TaskCompletionMode
+import com.filodot.noscroll.core.model.TaskTarget
+import com.filodot.noscroll.core.model.TaskType
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,6 +20,9 @@ sealed interface EnforcementUiState {
         val grantMinutes: Int,
         val difficulty: TaskDifficulty = TaskDifficulty.MEDIUM,
         val trigger: TaskTrigger = TaskTrigger.INTERVAL,
+        val target: TaskTarget = TaskTarget.YOUTUBE_SHORTS,
+        val type: TaskType = TaskType.ARITHMETIC,
+        val completionMode: TaskCompletionMode = TaskCompletionMode.CHECKED_ANSWER,
         val answer: String = "",
         val wrongAttempts: Int = 0,
         val answerStatus: TaskAnswerStatus = TaskAnswerStatus.READY,
@@ -140,6 +146,7 @@ class BlockingOverlayStateHolder(
         val current = mutableState.value
         if (current.emergencyForm != null) return
         val task = current.enforcement as? EnforcementUiState.TaskGate ?: return
+        if (task.completionMode != TaskCompletionMode.CHECKED_ANSWER) return
         if (task.answerStatus == TaskAnswerStatus.CHECKING ||
             task.answerStatus == TaskAnswerStatus.CORRECT
         ) {
@@ -158,7 +165,9 @@ class BlockingOverlayStateHolder(
         val current = mutableState.value
         if (current.emergencyForm != null) return
         val task = current.enforcement as? EnforcementUiState.TaskGate ?: return
-        if (task.answer.isBlank() || task.answerStatus == TaskAnswerStatus.CHECKING ||
+        if (
+            (task.completionMode == TaskCompletionMode.CHECKED_ANSWER && task.answer.isBlank()) ||
+            task.answerStatus == TaskAnswerStatus.CHECKING ||
             task.answerStatus == TaskAnswerStatus.CORRECT
         ) {
             return

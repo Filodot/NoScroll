@@ -2,13 +2,16 @@ package com.filodot.noscroll.data.local.repository
 
 import com.filodot.noscroll.core.contracts.EmergencyRepository
 import com.filodot.noscroll.core.contracts.TaskRepository
+import com.filodot.noscroll.core.contracts.TaskPresetRepository
 import com.filodot.noscroll.core.contracts.UsageRepository
 import com.filodot.noscroll.core.model.DailyUsage
+import com.filodot.noscroll.core.model.CustomTaskPreset
 import com.filodot.noscroll.core.model.EmergencyEvent
 import com.filodot.noscroll.core.model.EmergencyState
 import com.filodot.noscroll.core.model.GateCycle
 import com.filodot.noscroll.core.model.PendingTask
 import com.filodot.noscroll.data.local.room.DailyUsageDao
+import com.filodot.noscroll.data.local.room.CustomTaskPresetDao
 import com.filodot.noscroll.data.local.room.EmergencyEventDao
 import com.filodot.noscroll.data.local.room.GateCycleDao
 import com.filodot.noscroll.data.local.room.PendingTaskDao
@@ -124,4 +127,25 @@ class RoomTaskGrantTransaction(
         updatedAtEpochMillis = updatedAt.toEpochMilli(),
         entryCooldownUntilEpochMillis = entryCooldownUntil.toEpochMilli(),
     )
+}
+
+class RoomTaskPresetRepository(
+    private val dao: CustomTaskPresetDao,
+    scope: CoroutineScope,
+) : TaskPresetRepository {
+    private val mutableInitialized = MutableStateFlow(false)
+    val initialized: StateFlow<Boolean> = mutableInitialized.asStateFlow()
+
+    override val presets: StateFlow<List<CustomTaskPreset>> = dao.observeAll()
+        .map { entities -> entities.map { it.toModel() } }
+        .onEach { mutableInitialized.value = true }
+        .stateIn(scope, SharingStarted.Eagerly, emptyList())
+
+    override suspend fun save(preset: CustomTaskPreset) {
+        dao.upsert(preset.toEntity())
+    }
+
+    override suspend fun delete(presetId: String) {
+        dao.delete(presetId)
+    }
 }

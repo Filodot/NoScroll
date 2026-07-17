@@ -1,71 +1,98 @@
 package com.filodot.noscroll.core.tasks
 
 import com.filodot.noscroll.core.model.TaskDifficulty
-import com.filodot.noscroll.core.model.TaskTrigger
-import java.time.Duration
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class TaskDifficultyPolicyTest {
     private val policy = TaskDifficultyPolicy()
+    private val config = TaskDifficultyConfig(
+        mediumThresholdMinutes = 10,
+        hardThresholdMinutes = 25,
+        decayBreakMinutesPerLoadMinute = 5,
+    )
     private val now = Instant.parse("2026-07-16T10:00:00Z")
 
     @Test
-    fun `entry task is always easy and does not alter interval series`() {
-        val state = TaskDifficultyState(2, now.minusSeconds(60))
-
-        val assignment = policy.assign(TaskTrigger.ENTRY, state, now)
-
-        assertEquals(TaskDifficulty.EASY, assignment.difficulty)
-        assertEquals(state, assignment.nextState)
+    fun `fresh load is easy`() {
+        assertEquals(TaskDifficulty.EASY, policy.difficulty(TaskDifficultyState(), config))
     }
 
     @Test
-    fun `first interval block is medium`() {
-        val assignment = policy.assign(TaskTrigger.INTERVAL, TaskDifficultyState(), now)
+    fun `ten watched minutes reach medium`() {
+        val updated = policy.update(
+            state = TaskDifficultyState(updatedAt = now.minusSeconds(600)),
+            now = now,
+            shortsActive = true,
+            config = config,
+            observedActiveSeconds = 600,
+        )
 
-        assertEquals(TaskDifficulty.MEDIUM, assignment.difficulty)
-        assertEquals(TaskDifficultyState(1, now), assignment.nextState)
+        assertEquals(600L, updated.loadSeconds)
+        assertEquals(TaskDifficulty.MEDIUM, policy.difficulty(updated, config))
     }
 
     @Test
-    fun `second interval block inside thirty minutes is hard`() {
-        val state = TaskDifficultyState(1, now.minus(Duration.ofMinutes(29)))
+    fun `twenty five watched minutes reach hard regardless of trigger`() {
+        val state = TaskDifficultyState(loadSeconds = 25 * 60L, updatedAt = now)
 
-        val assignment = policy.assign(TaskTrigger.INTERVAL, state, now)
-
-        assertEquals(TaskDifficulty.HARD, assignment.difficulty)
-        assertEquals(TaskDifficultyState(2, now), assignment.nextState)
+        assertEquals(TaskDifficulty.HARD, policy.difficulty(state, config))
     }
 
     @Test
-    fun `series decays to medium exactly after thirty minutes`() {
-        val state = TaskDifficultyState(4, now.minus(Duration.ofMinutes(30)))
+    fun `five break minutes remove one load minute`() {
+        val state = TaskDifficultyState(loadSeconds = 10 * 60L, updatedAt = now)
 
-        val assignment = policy.assign(TaskTrigger.INTERVAL, state, now)
+        val recovered = policy.update(
+            state = state,
+            now = now.plusSeconds(5 * 60L),
+            shortsActive = false,
+            config = config,
+        )
 
-        assertEquals(TaskDifficulty.MEDIUM, assignment.difficulty)
-        assertEquals(TaskDifficultyState(1, now), assignment.nextState)
+        assertEquals(9 * 60L, recovered.loadSeconds)
+        assertEquals(TaskDifficulty.EASY, policy.difficulty(recovered, config))
     }
 
     @Test
-    fun `wall clock rollback safely starts a new medium series`() {
-        val state = TaskDifficultyState(2, now.plusSeconds(1))
+    fun `frequent heartbeats preserve fractional recovery`() {
+        var state = TaskDifficultyState(loadSeconds = 60L, updatedAt = now)
+        repeat(5) {
+            state = policy.update(
+                state = state,
+                now = now.plusSeconds((it + 1).toLong()),
+                shortsActive = false,
+                config = config,
+            )
+        }
 
-        val assignment = policy.assign(TaskTrigger.INTERVAL, state, now)
-
-        assertEquals(TaskDifficulty.MEDIUM, assignment.difficulty)
-        assertEquals(TaskDifficultyState(1, now), assignment.nextState)
+        assertEquals(59L, state.loadSeconds)
+        assertEquals(0L, state.recoverySeconds)
     }
 
     @Test
-    fun `interval streak saturates instead of overflowing`() {
-        val state = TaskDifficultyState(Int.MAX_VALUE, now.minusSeconds(1))
+    fun `offline time is recovery even when first observed screen is Shorts`() {
+        val state = TaskDifficultyState(loadSeconds = 120L, updatedAt = now.minusSeconds(60))
 
-        val assignment = policy.assign(TaskTrigger.INTERVAL, state, now)
+        val recovered = policy.update(
+            state = state,
+            now = now,
+            shortsActive = true,
+            config = config,
+            observedActiveSeconds = 0,
+        )
 
-        assertEquals(TaskDifficulty.HARD, assignment.difficulty)
-        assertEquals(TaskDifficultyState(Int.MAX_VALUE, now), assignment.nextState)
+        assertEquals(108L, recovered.loadSeconds)
+    }
+
+    @Test
+    fun `wall clock rollback leaves load unchanged`() {
+        val state = TaskDifficultyState(loadSeconds = 123L, updatedAt = now.plusSeconds(1))
+
+        val updated = policy.update(state, now, shortsActive = true, config = config)
+
+        assertEquals(123L, updated.loadSeconds)
+        assertEquals(now, updated.updatedAt)
     }
 }

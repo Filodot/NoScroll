@@ -53,7 +53,8 @@ class LimitsStateHolderTest {
         assertEquals(5, holder.state.value.draft.shortsMinutes)
         assertEquals(45, holder.state.value.draft.dailyMinutes)
         assertEquals(LimitPreset.BALANCED, holder.state.value.draft.preset)
-        assertEquals("Паузы в Shorts и дневной лимит выключены.", holder.state.value.summary)
+        assertTrue(holder.state.value.summary.startsWith("Паузы в Shorts и дневной лимит выключены."))
+        assertTrue(holder.state.value.summary.contains("Instagram доступен интервалами по 10 минут"))
     }
 
     @Test
@@ -82,6 +83,17 @@ class LimitsStateHolderTest {
 
         holder.dispatch(LimitsAction.SetDailyMinutes(999))
         assertEquals(240, holder.state.value.draft.dailyMinutes)
+    }
+
+    @Test
+    fun `instagram interval is independent and clamped`() {
+        val holder = LimitsStateHolder()
+
+        holder.dispatch(LimitsAction.SetInstagramMinutes(100))
+        assertEquals(30, holder.state.value.draft.instagramMinutes)
+        holder.dispatch(LimitsAction.DecrementInstagram)
+        assertEquals(29, holder.state.value.draft.instagramMinutes)
+        assertEquals(LimitPreset.CUSTOM, holder.state.value.draft.preset)
     }
 
     @Test

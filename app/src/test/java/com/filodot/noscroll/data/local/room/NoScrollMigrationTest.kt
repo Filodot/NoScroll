@@ -28,7 +28,7 @@ class NoScrollMigrationTest {
     }
 
     @Test
-    fun migrationOneToFourPreservesUsageAndInitializesNewColumns() = runBlocking {
+    fun migrationOneToFivePreservesUsageAndInitializesNewColumns() = runBlocking {
         createVersionOneDatabase()
 
         val database = Room.databaseBuilder(context, NoScrollDatabase::class.java, databaseName)
@@ -40,17 +40,22 @@ class NoScrollMigrationTest {
         assertEquals(LocalDate.of(2026, 7, 14), migrated.toModel().localDate)
         assertEquals(1_234L, migrated.youtubeSeconds)
         assertEquals(456L, migrated.shortsSeconds)
+        assertEquals(0L, migrated.instagramSeconds)
         assertEquals(0L, migrated.emergencyYoutubeSeconds)
         assertEquals(null, database.gateCycleDao().get("current"))
         database.close()
     }
 
     @Test
-    fun migrationTwoToFourPreservesPendingGateAndAddsAllDefaults() = runBlocking {
+    fun migrationTwoToFivePreservesPendingGateAndAddsAllDefaults() = runBlocking {
         createVersionTwoDatabase()
 
         val database = Room.databaseBuilder(context, NoScrollDatabase::class.java, databaseName)
-            .addMigrations(NoScrollDatabase.MIGRATION_2_3, NoScrollDatabase.MIGRATION_3_4)
+            .addMigrations(
+                NoScrollDatabase.MIGRATION_2_3,
+                NoScrollDatabase.MIGRATION_3_4,
+                NoScrollDatabase.MIGRATION_4_5,
+            )
             .allowMainThreadQueries()
             .build()
         val cycle = requireNotNull(database.gateCycleDao().get("current")).toModel()
@@ -61,17 +66,19 @@ class NoScrollMigrationTest {
         assertEquals(0, cycle.intervalBlockStreak)
         assertEquals(null, cycle.lastIntervalBlockAt)
         assertEquals(null, cycle.entryCooldownUntil)
+        assertEquals(0L, cycle.instagramUsedSeconds)
+        assertEquals(0L, cycle.difficultyLoadSeconds)
         assertEquals(com.filodot.noscroll.core.model.TaskDifficulty.MEDIUM, task.difficulty)
         assertEquals(com.filodot.noscroll.core.model.TaskTrigger.INTERVAL, task.trigger)
         database.close()
     }
 
     @Test
-    fun migrationThreeToFourPreservesVersionThreeState() = runBlocking {
+    fun migrationThreeToFivePreservesVersionThreeState() = runBlocking {
         createVersionThreeDatabase()
 
         val database = Room.databaseBuilder(context, NoScrollDatabase::class.java, databaseName)
-            .addMigrations(NoScrollDatabase.MIGRATION_3_4)
+            .addMigrations(NoScrollDatabase.MIGRATION_3_4, NoScrollDatabase.MIGRATION_4_5)
             .allowMainThreadQueries()
             .build()
         val cycle = requireNotNull(database.gateCycleDao().get("current")).toModel()

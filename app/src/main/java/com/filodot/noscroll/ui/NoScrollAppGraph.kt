@@ -3,6 +3,7 @@ package com.filodot.noscroll.ui
 import com.filodot.noscroll.core.contracts.EmergencyRepository
 import com.filodot.noscroll.core.contracts.SettingsRepository
 import com.filodot.noscroll.core.contracts.TaskRepository
+import com.filodot.noscroll.core.contracts.TaskPresetRepository
 import com.filodot.noscroll.core.contracts.UsageRepository
 import com.filodot.noscroll.core.model.DailyUsage
 import com.filodot.noscroll.core.model.GateCycle
@@ -10,6 +11,7 @@ import com.filodot.noscroll.core.model.UserSettings
 import com.filodot.noscroll.core.testing.InMemoryEmergencyRepository
 import com.filodot.noscroll.core.testing.InMemorySettingsRepository
 import com.filodot.noscroll.core.testing.InMemoryTaskRepository
+import com.filodot.noscroll.core.testing.InMemoryTaskPresetRepository
 import com.filodot.noscroll.core.testing.InMemoryUsageRepository
 import com.filodot.noscroll.feature.dashboard.DashboardUiState
 import com.filodot.noscroll.feature.history.EmergencyHistoryUiState
@@ -29,6 +31,7 @@ data class NoScrollAppGraph(
     val settingsRepository: SettingsRepository,
     val usageRepository: UsageRepository,
     val taskRepository: TaskRepository,
+    val taskPresetRepository: TaskPresetRepository,
     val emergencyRepository: EmergencyRepository,
     val dashboardState: DashboardUiState,
     val settingsState: SettingsUiState,
@@ -59,6 +62,7 @@ data class NoScrollAppGraph(
                     ),
                 ),
                 taskRepository = InMemoryTaskRepository(),
+                taskPresetRepository = InMemoryTaskPresetRepository(),
                 emergencyRepository = InMemoryEmergencyRepository(),
                 dashboardState = DashboardUiState(dateLabel = "14 июля"),
                 settingsState = SettingsUiState(

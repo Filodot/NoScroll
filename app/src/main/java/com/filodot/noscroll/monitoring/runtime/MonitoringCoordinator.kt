@@ -15,10 +15,13 @@ import com.filodot.noscroll.core.model.PolicyDecision
 import com.filodot.noscroll.core.model.PolicyInput
 import com.filodot.noscroll.core.model.ShortsDetectionState
 import com.filodot.noscroll.core.model.TaskDifficulty
+import com.filodot.noscroll.core.model.TaskCompletionMode
+import com.filodot.noscroll.core.model.TaskTarget
+import com.filodot.noscroll.core.model.TaskType
 import com.filodot.noscroll.core.model.TaskTrigger
 import com.filodot.noscroll.core.policy.PolicyEngine
-import com.filodot.noscroll.core.tasks.ArithmeticTaskState
-import com.filodot.noscroll.core.tasks.LocalArithmeticTaskEngine
+import com.filodot.noscroll.core.tasks.LocalTaskFactory
+import com.filodot.noscroll.core.tasks.TaskDifficultyConfig
 import com.filodot.noscroll.core.tasks.TaskDifficultyPolicy
 import com.filodot.noscroll.core.tasks.TaskDifficultyState
 import com.filodot.noscroll.core.usage.daily.YouTubeForegroundReconstructor
@@ -29,6 +32,7 @@ import com.filodot.noscroll.data.local.datastore.DataStoreSettingsRepository
 import com.filodot.noscroll.data.local.repository.RoomEmergencyRepository
 import com.filodot.noscroll.data.local.repository.RoomTaskGrantTransaction
 import com.filodot.noscroll.data.local.repository.RoomTaskRepository
+import com.filodot.noscroll.data.local.repository.RoomTaskPresetRepository
 import com.filodot.noscroll.data.local.repository.RoomUsageRepository
 import com.filodot.noscroll.feature.overlay.EnforcementUiState
 import com.filodot.noscroll.feature.overlay.TaskAnswerStatus
@@ -69,6 +73,7 @@ class MonitoringCoordinator(
     private val settingsRepository: DataStoreSettingsRepository,
     private val usageRepository: RoomUsageRepository,
     private val taskRepository: RoomTaskRepository,
+    private val taskPresetRepository: RoomTaskPresetRepository,
     private val emergencyRepository: RoomEmergencyRepository,
     private val taskGrantTransaction: RoomTaskGrantTransaction,
     private val usageStatsSource: AndroidUsageStatsSource,
@@ -79,6 +84,7 @@ class MonitoringCoordinator(
     private val detector = YouTubeShortsDetector()
     private val policyEngine = PolicyEngine()
     private val taskDifficultyPolicy = TaskDifficultyPolicy()
+    private val taskFactory = LocalTaskFactory(wallClock)
     private val reconstructor = YouTubeForegroundReconstructor()
     private val entryGate = ShortsEntryGate()
     private val deferredIntervalGate = DeferredIntervalGate()
@@ -89,6 +95,7 @@ class MonitoringCoordinator(
             usageRepository.dailyInitialized,
             usageRepository.gateInitialized,
             taskRepository.initialized,
+            taskPresetRepository.initialized,
             emergencyRepository.initialized,
         ),
     ) { values -> values.all { it } }
@@ -101,6 +108,8 @@ class MonitoringCoordinator(
     private var lastTickElapsedMillis: Long? = null
     private var youtubeRemainderMillis = 0L
     private var shortsRemainderMillis = 0L
+    private var instagramRemainderMillis = 0L
+    private var instagramGrantedUntil: Instant? = null
     private var emergencyOverrideActive = false
     private var activeService: NoScrollAccessibilityService? = null
     private var shortsEjectionBlockedUntilElapsedMillis = 0L
@@ -128,6 +137,11 @@ class MonitoringCoordinator(
             }
             launch {
                 service.events.collect { event ->
+                    if (event.packageName == AccessibilityAdapterController.INSTAGRAM_PACKAGE_NAME) {
+                        latestDetectionState = ShortsDetectionState.NOT_SHORTS
+                        evaluatePolicy(triggeringEvent = event)
+                        return@collect
+                    }
                     val snapshot = service.capture(event) ?: return@collect
                     val result = detector.evaluate(snapshot)
                     latestDetectionState = result.state
@@ -172,19 +186,19 @@ class MonitoringCoordinator(
     suspend fun verifyAnswer(taskId: String, answer: String): Boolean = mutex.withLock {
         val task = taskRepository.pendingTask.value
         if (task == null || task.id != taskId || task.solved) return@withLock false
-        val parsed = answer.trim().toIntOrNull()
-        if (parsed != task.expectedAnswer) {
+        val correct = when (task.completionMode) {
+            TaskCompletionMode.CHECKED_ANSWER -> answer.trim().toIntOrNull() == task.expectedAnswer
+            TaskCompletionMode.MANUAL_CONFIRMATION -> true
+        }
+        if (!correct) {
             val updated = task.copy(wrongAttempts = task.wrongAttempts.saturatingIncrement())
             taskRepository.save(updated)
-            mutableEnforcement.value = updated.toUi(
-                settingsRepository.settings.value.shortsIntervalMinutes,
-            )
+            mutableEnforcement.value = updated.toUi(grantMinutesFor(updated.target))
             return@withLock false
         }
 
         val now = wallClock.now()
-        val intervalMinutes = settingsRepository.settings.value.shortsIntervalMinutes
-            .coerceAtLeast(1)
+        val intervalMinutes = grantMinutesFor(task.target).coerceAtLeast(1)
         val entryCooldownSeconds = intervalMinutes.toLong() * SECONDS_PER_MINUTE
         val entryCooldownUntil = now.plusSeconds(entryCooldownSeconds)
         val granted = taskGrantTransaction.grant(
@@ -194,10 +208,14 @@ class MonitoringCoordinator(
             entryCooldownUntil = entryCooldownUntil,
         )
         if (granted) {
-            entryGate.onTaskSolved(
-                elapsedMillis = SystemClock.elapsedRealtime(),
-                validityMillis = entryCooldownSeconds * MILLIS_PER_SECOND,
-            )
+            if (task.target == TaskTarget.YOUTUBE_SHORTS) {
+                entryGate.onTaskSolved(
+                    elapsedMillis = SystemClock.elapsedRealtime(),
+                    validityMillis = entryCooldownSeconds * MILLIS_PER_SECOND,
+                )
+            } else {
+                instagramGrantedUntil = entryCooldownUntil
+            }
             deferredIntervalGate.reset()
             latestDetectionState = ShortsDetectionState.NOT_SHORTS
         }
@@ -208,7 +226,7 @@ class MonitoringCoordinator(
         val current = taskRepository.pendingTask.value ?: return@withLock null
         if (current.wrongAttempts < WRONG_ATTEMPTS_FOR_REPLACEMENT) return@withLock null
         taskRepository.clear(current.id)
-        val replacement = newTask(current.difficulty, current.trigger)
+        val replacement = newTask(current.difficulty, current.trigger, current.target)
         taskRepository.save(replacement)
         usageRepository.saveGateCycle(
             usageRepository.gateCycle.value.copy(
@@ -216,18 +234,22 @@ class MonitoringCoordinator(
                 updatedAt = wallClock.now(),
             ),
         )
-        replacement.toUi(settingsRepository.settings.value.shortsIntervalMinutes)
+        replacement.toUi(grantMinutesFor(replacement.target))
             .also { mutableEnforcement.value = it }
     }
 
     /** Creates or restores the challenge shown inside NoScroll, never in a system overlay. */
-    suspend fun prepareChallengeForApp() {
+    suspend fun prepareChallengeForApp(target: TaskTarget = TaskTarget.YOUTUBE_SHORTS) {
         ready.first { it }
         mutex.withLock {
             val settings = settingsRepository.settings.value
+            val targetEnabled = when (target) {
+                TaskTarget.YOUTUBE_SHORTS -> settings.shortsGateEnabled
+                TaskTarget.INSTAGRAM -> settings.instagramGateEnabled
+            }
             if (
                 !settings.onboardingCompleted ||
-                !settings.shortsGateEnabled ||
+                !targetEnabled ||
                 !systemAccess.state.value.accessibilityGranted ||
                 settings.emergencyActive ||
                 emergencyRepository.state.value.isActive
@@ -244,6 +266,7 @@ class MonitoringCoordinator(
                 ?.toLong()
                 ?.times(SECONDS_PER_MINUTE)
             if (
+                target == TaskTarget.YOUTUBE_SHORTS &&
                 systemAccess.state.value.usageAccessGranted &&
                 dailyLimitSeconds != null &&
                 usage.youtubeSeconds >= dailyLimitSeconds
@@ -256,23 +279,35 @@ class MonitoringCoordinator(
             }
             val existing = taskRepository.pendingTask.value
             if (existing != null) {
-                mutableEnforcement.value = existing.toUi(settings.shortsIntervalMinutes)
+                mutableEnforcement.value = existing.toUi(grantMinutesFor(existing.target))
                 return@withLock
             }
 
-            val intervalSeconds = settings.shortsIntervalMinutes
+            val intervalMinutes = grantMinutesFor(target)
+            val intervalSeconds = intervalMinutes
                 .takeIf { it > 0 }
                 ?.toLong()
                 ?.times(SECONDS_PER_MINUTE)
+            val usedSeconds = when (target) {
+                TaskTarget.YOUTUBE_SHORTS -> cycle.usedSeconds
+                TaskTarget.INSTAGRAM -> cycle.instagramUsedSeconds
+            }
+            val cooldownUntil = when (target) {
+                TaskTarget.YOUTUBE_SHORTS -> cycle.entryCooldownUntil
+                TaskTarget.INSTAGRAM -> listOfNotNull(
+                    cycle.instagramEntryCooldownUntil,
+                    instagramGrantedUntil,
+                ).maxOrNull()
+            }
             val trigger = when {
-                intervalSeconds != null && cycle.usedSeconds >= intervalSeconds ->
+                intervalSeconds != null && usedSeconds >= intervalSeconds ->
                     TaskTrigger.INTERVAL
 
-                cycle.entryCooldownUntil?.let(now::isBefore) != true -> TaskTrigger.ENTRY
+                cooldownUntil?.let(now::isBefore) != true -> TaskTrigger.ENTRY
                 else -> null
             } ?: return@withLock
 
-            mutableEnforcement.value = ensureTask(cycle, usage, trigger)
+            mutableEnforcement.value = ensureTask(cycle, usage, trigger, target)
         }
     }
 
@@ -333,6 +368,10 @@ class MonitoringCoordinator(
             latestDeviceState.deviceUnlocked &&
             latestDeviceState.foregroundPackage == AccessibilityAdapterController.YOUTUBE_PACKAGE_NAME
         val shortsActive = youtubeActive && latestDetectionState == ShortsDetectionState.SHORTS_CONFIRMED
+        val instagramActive = latestDeviceState.screenInteractive &&
+            latestDeviceState.deviceUnlocked &&
+            latestDeviceState.foregroundPackage == AccessibilityAdapterController.INSTAGRAM_PACKAGE_NAME
+        var observedShortsSeconds = 0L
 
         if (youtubeActive && deltaMillis > 0) {
             val total = youtubeRemainderMillis.saturatingAdd(deltaMillis)
@@ -370,6 +409,7 @@ class MonitoringCoordinator(
             val seconds = total / MILLIS_PER_SECOND
             shortsRemainderMillis = total % MILLIS_PER_SECOND
             if (seconds > 0) {
+                observedShortsSeconds = seconds
                 usage = usage.copy(
                     shortsSeconds = usage.shortsSeconds.saturatingAdd(seconds),
                     updatedAt = now,
@@ -382,6 +422,42 @@ class MonitoringCoordinator(
         } else {
             shortsRemainderMillis = 0
         }
+
+        if (instagramActive && deltaMillis > 0) {
+            val total = instagramRemainderMillis.saturatingAdd(deltaMillis)
+            val seconds = total / MILLIS_PER_SECOND
+            instagramRemainderMillis = total % MILLIS_PER_SECOND
+            if (seconds > 0) {
+                usage = usage.copy(
+                    instagramSeconds = usage.instagramSeconds.saturatingAdd(seconds),
+                    updatedAt = now,
+                )
+                cycle = cycle.copy(
+                    instagramUsedSeconds = cycle.instagramUsedSeconds.saturatingAdd(seconds),
+                    updatedAt = now,
+                )
+            }
+        } else {
+            instagramRemainderMillis = 0
+        }
+
+        val difficultyState = taskDifficultyPolicy.update(
+            state = TaskDifficultyState(
+                loadSeconds = cycle.difficultyLoadSeconds,
+                updatedAt = cycle.difficultyLoadUpdatedAt,
+                recoverySeconds = cycle.difficultyRecoverySeconds,
+            ),
+            now = now,
+            shortsActive = shortsActive,
+            config = difficultyConfig(),
+            observedActiveSeconds = observedShortsSeconds,
+        )
+        cycle = cycle.copy(
+            difficultyLoadSeconds = difficultyState.loadSeconds,
+            difficultyLoadUpdatedAt = difficultyState.updatedAt,
+            difficultyRecoverySeconds = difficultyState.recoverySeconds,
+            updatedAt = now,
+        )
 
         if (usage != usageRepository.dailyUsage.value) usageRepository.saveDailyUsage(usage)
         if (cycle != usageRepository.gateCycle.value) usageRepository.saveGateCycle(cycle)
@@ -411,10 +487,24 @@ class MonitoringCoordinator(
             emergencyActive = emergencyOverrideActive ||
                 settingsRepository.settings.value.emergencyActive,
         )
+        if (
+            latestDeviceState.foregroundPackage ==
+            AccessibilityAdapterController.INSTAGRAM_PACKAGE_NAME
+        ) {
+            evaluateInstagramPolicyLocked(usage, cycle, effectiveSettings, access.accessibilityGranted)
+            return
+        }
         val intervalDue = effectiveSettings.shortsGateEnabled &&
             effectiveSettings.shortsIntervalMinutes > 0 &&
             cycle.usedSeconds >= effectiveSettings.shortsIntervalMinutes.toLong() *
             SECONDS_PER_MINUTE
+        if (
+            youtubeForeground &&
+            taskRepository.pendingTask.value?.target == TaskTarget.INSTAGRAM
+        ) {
+            deferredIntervalGate.reset()
+            return
+        }
         val decision = policyEngine.decide(
             PolicyInput(
                 settings = effectiveSettings,
@@ -424,7 +514,8 @@ class MonitoringCoordinator(
                 ),
                 dailyUsage = usage,
                 gateCycle = cycle,
-                pendingTask = taskRepository.pendingTask.value,
+                pendingTask = taskRepository.pendingTask.value
+                    ?.takeIf { it.target == TaskTarget.YOUTUBE_SHORTS },
                 emergencyState = emergencyRepository.state.value,
                 detectorState = latestDetectionState,
                 youtubeForeground = youtubeForeground,
@@ -447,13 +538,17 @@ class MonitoringCoordinator(
             is PolicyDecision.TaskGateRequired -> when {
                 decision.pendingTaskId != null -> {
                     deferredIntervalGate.reset()
-                    showEnforcement(ensureTask(cycle, usage, decision.trigger))
+                    showEnforcement(
+                        ensureTask(cycle, usage, decision.trigger, TaskTarget.YOUTUBE_SHORTS),
+                    )
                     requestShortsEjection()
                 }
 
                 decision.trigger == TaskTrigger.ENTRY -> {
                     deferredIntervalGate.reset()
-                    showEnforcement(ensureTask(cycle, usage, TaskTrigger.ENTRY))
+                    showEnforcement(
+                        ensureTask(cycle, usage, TaskTrigger.ENTRY, TaskTarget.YOUTUBE_SHORTS),
+                    )
                     requestShortsEjection()
                 }
 
@@ -473,6 +568,45 @@ class MonitoringCoordinator(
         }
     }
 
+    private suspend fun evaluateInstagramPolicyLocked(
+        usage: DailyUsage,
+        cycle: GateCycle,
+        settings: com.filodot.noscroll.core.model.UserSettings,
+        accessibilityGranted: Boolean,
+    ) {
+        if (
+            !settings.instagramGateEnabled ||
+            !accessibilityGranted ||
+            settings.emergencyActive ||
+            emergencyRepository.state.value.isActive
+        ) {
+            return
+        }
+        val now = wallClock.now()
+        val existing = taskRepository.pendingTask.value
+        if (existing != null) {
+            if (existing.target == TaskTarget.INSTAGRAM) {
+                showEnforcement(existing.toUi(grantMinutesFor(TaskTarget.INSTAGRAM)))
+                requestTargetEjection()
+            }
+            return
+        }
+        val intervalSeconds = settings.instagramIntervalMinutes
+            .coerceAtLeast(1)
+            .toLong() * SECONDS_PER_MINUTE
+        val cooldownUntil = listOfNotNull(
+            cycle.instagramEntryCooldownUntil,
+            instagramGrantedUntil,
+        ).maxOrNull()
+        val trigger = when {
+            cycle.instagramUsedSeconds >= intervalSeconds -> TaskTrigger.INTERVAL
+            cooldownUntil?.let(now::isBefore) != true -> TaskTrigger.ENTRY
+            else -> null
+        } ?: return
+        showEnforcement(ensureTask(cycle, usage, trigger, TaskTarget.INSTAGRAM))
+        requestTargetEjection()
+    }
+
     private suspend fun handleDeferredInterval(
         cycle: GateCycle,
         usage: DailyUsage,
@@ -488,46 +622,51 @@ class MonitoringCoordinator(
             elapsedMillis = eventElapsed,
         )
         if (action == DeferredIntervalAction.ENFORCE) {
-            showEnforcement(ensureTask(cycle, usage, TaskTrigger.INTERVAL))
+            showEnforcement(
+                ensureTask(cycle, usage, TaskTrigger.INTERVAL, TaskTarget.YOUTUBE_SHORTS),
+            )
             deferredIntervalGate.reset()
-            requestShortsEjection()
+            requestTargetEjection()
         }
     }
 
     private fun requestShortsEjection() {
+        requestTargetEjection()
+    }
+
+    private fun requestTargetEjection() {
         val elapsed = SystemClock.elapsedRealtime()
         if (elapsed < shortsEjectionBlockedUntilElapsedMillis) return
         shortsEjectionBlockedUntilElapsedMillis = elapsed + SHORTS_EJECTION_THROTTLE_MILLIS
         latestDetectionState = ShortsDetectionState.NOT_SHORTS
         detector.resetToNotShorts(elapsed)
-        activeService?.ejectShortsAndOpenChallenge()
+        activeService?.ejectTargetAndOpenChallenge()
     }
 
     private suspend fun ensureTask(
         cycle: GateCycle,
         usage: DailyUsage,
         requestedTrigger: TaskTrigger,
+        target: TaskTarget,
     ): EnforcementUiState.TaskGate {
         val existing = taskRepository.pendingTask.value
         val activeTaskGate = mutableEnforcement.value as? EnforcementUiState.TaskGate
         if (existing == null && activeTaskGate != null) return activeTaskGate
         val now = wallClock.now()
-        val assignment = taskDifficultyPolicy.assign(
-            trigger = requestedTrigger,
+        val difficulty = taskDifficultyPolicy.difficulty(
             state = TaskDifficultyState(
-                intervalBlockStreak = cycle.intervalBlockStreak,
-                lastIntervalBlockAt = cycle.lastIntervalBlockAt,
+                loadSeconds = cycle.difficultyLoadSeconds,
+                updatedAt = cycle.difficultyLoadUpdatedAt,
+                recoverySeconds = cycle.difficultyRecoverySeconds,
             ),
-            now = now,
+            config = difficultyConfig(),
         )
-        val task = existing ?: newTask(assignment.difficulty, requestedTrigger).also { created ->
+        val task = existing ?: newTask(difficulty, requestedTrigger, target).also { created ->
             taskRepository.save(created)
             usageRepository.saveGateCycle(
                 cycle.copy(
                     pendingTaskId = created.id,
                     updatedAt = now,
-                    intervalBlockStreak = assignment.nextState.intervalBlockStreak,
-                    lastIntervalBlockAt = assignment.nextState.lastIntervalBlockAt,
                 ),
             )
             usageRepository.saveDailyUsage(
@@ -542,16 +681,21 @@ class MonitoringCoordinator(
                 cycle.copy(pendingTaskId = task.id, updatedAt = wallClock.now()),
             )
         }
-        return task.toUi(settingsRepository.settings.value.shortsIntervalMinutes)
+        return task.toUi(grantMinutesFor(task.target))
     }
 
     private fun newTask(
         difficulty: TaskDifficulty,
         trigger: TaskTrigger,
-    ): PendingTask = LocalArithmeticTaskEngine(
-        wallClock = wallClock,
-        initialState = ArithmeticTaskState(),
-    ).requireTask(difficulty, trigger)
+        target: TaskTarget,
+    ): PendingTask = taskFactory.create(
+        difficulty = difficulty,
+        trigger = trigger,
+        target = target,
+        enabledTypes = settingsRepository.settings.value.enabledTaskTypes,
+        customPresets = taskPresetRepository.presets.value,
+        sequence = usageRepository.dailyUsage.value.gatesShown,
+    )
 
     private fun showEnforcement(state: EnforcementUiState) {
         mutableEnforcement.value = state
@@ -584,7 +728,19 @@ class MonitoringCoordinator(
         if (localDate == date) this else DailyUsage(localDate = date, updatedAt = now)
 
     private fun GateCycle.forDate(date: LocalDate, now: Instant): GateCycle =
-        if (localDate == date) this else GateCycle(localDate = date, updatedAt = now)
+        if (localDate == date) {
+            this
+        } else {
+            GateCycle(
+                localDate = date,
+                updatedAt = now,
+                entryCooldownUntil = entryCooldownUntil?.takeIf(now::isBefore),
+                instagramEntryCooldownUntil = instagramEntryCooldownUntil?.takeIf(now::isBefore),
+                difficultyLoadSeconds = difficultyLoadSeconds,
+                difficultyLoadUpdatedAt = difficultyLoadUpdatedAt,
+                difficultyRecoverySeconds = difficultyRecoverySeconds,
+            )
+        }
 
     private fun PendingTask.toUi(grantMinutes: Int): EnforcementUiState.TaskGate {
         val symbol = when (operation) {
@@ -599,8 +755,16 @@ class MonitoringCoordinator(
         }
         return EnforcementUiState.TaskGate(
             taskId = id,
-            visualExpression = "$leftOperand $symbol $rightOperand",
-            spokenExpression = "$leftOperand $spokenOperation $rightOperand",
+            visualExpression = if (type == TaskType.ARITHMETIC) {
+                "$leftOperand $symbol $rightOperand"
+            } else {
+                prompt
+            },
+            spokenExpression = if (type == TaskType.ARITHMETIC) {
+                "$leftOperand $spokenOperation $rightOperand"
+            } else {
+                prompt
+            },
             grantMinutes = grantMinutes,
             wrongAttempts = wrongAttempts,
             answerStatus = if (wrongAttempts > 0) {
@@ -610,7 +774,27 @@ class MonitoringCoordinator(
             },
             difficulty = difficulty,
             trigger = trigger,
+            target = target,
+            type = type,
+            completionMode = completionMode,
         )
+    }
+
+    private fun difficultyConfig(): TaskDifficultyConfig {
+        val settings = settingsRepository.settings.value
+        return TaskDifficultyConfig(
+            mediumThresholdMinutes = settings.difficultyMediumThresholdMinutes,
+            hardThresholdMinutes = settings.difficultyHardThresholdMinutes,
+            decayBreakMinutesPerLoadMinute = settings.difficultyDecayBreakMinutes,
+        )
+    }
+
+    private fun grantMinutesFor(target: TaskTarget): Int {
+        val settings = settingsRepository.settings.value
+        return when (target) {
+            TaskTarget.YOUTUBE_SHORTS -> settings.shortsIntervalMinutes
+            TaskTarget.INSTAGRAM -> settings.instagramIntervalMinutes
+        }
     }
 
     private fun Long.saturatingAdd(other: Long): Long =

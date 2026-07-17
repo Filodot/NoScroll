@@ -68,10 +68,83 @@ fun DashboardScreen(
                     onAction = onAction,
                 )
                 Spacer(Modifier.height(16.dp))
+                InstagramCard(
+                    instagram = state.instagram,
+                    paused = state.emergency.active,
+                    onAction = onAction,
+                )
+                Spacer(Modifier.height(16.dp))
                 DailyCard(state.daily, paused = state.emergency.active, onAction = onAction)
                 Spacer(Modifier.height(16.dp))
                 EmergencyCard(state, onAction)
                 Spacer(Modifier.height(20.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun InstagramCard(
+    instagram: InstagramLimitUiState,
+    paused: Boolean,
+    onAction: (DashboardAction) -> Unit,
+) {
+    DashboardCard(title = "Instagram") {
+        when (instagram) {
+            InstagramLimitUiState.Disabled -> Text(
+                text = "Ограничение Instagram выключено",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyLarge,
+            )
+
+            is InstagramLimitUiState.Enabled -> {
+                if (instagram.accessLocked && !paused) {
+                    Text("Instagram заблокирован", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Выполните входное задание для следующих " +
+                            "${wholeMinutes(instagram.intervalSeconds)} минут",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Button(
+                        onClick = { onAction(DashboardAction.OpenInstagramChallenge) },
+                        modifier = Modifier.heightIn(min = 48.dp),
+                    ) { Text("Открыть задание") }
+                    return@DashboardCard
+                }
+                val progress = progress(instagram.cycleUsedSeconds, instagram.intervalSeconds)
+                if (paused) {
+                    PausedLabel()
+                    Spacer(Modifier.height(12.dp))
+                }
+                ContextualProgress(
+                    progress = progress,
+                    description = "Интервал Instagram: использовано " +
+                        "${formatCountdown(progress.usedSeconds)} из " +
+                        formatCountdown(progress.limitSeconds),
+                    paused = paused,
+                )
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "До паузы: ${formatCountdown(progress.remainingSeconds)}",
+                    style = MaterialTheme.typography.titleLarge,
+                )
+                instagram.unlockedUntilLabel?.let { label ->
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Вход разрешён до $label",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("Instagram сегодня: ${wholeMinutes(instagram.todaySeconds)} мин")
+                Text(
+                    "Учитывается всё время в приложении, включая ленту и сообщения",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
         }
     }

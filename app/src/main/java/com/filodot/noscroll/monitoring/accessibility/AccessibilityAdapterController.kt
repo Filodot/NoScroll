@@ -54,13 +54,17 @@ internal class AccessibilityAdapterController(
     ): Boolean {
         if (!connected) return false
         if (eventType !in SUPPORTED_EVENT_TYPES) return false
-        if (packageName?.contentEquals(YOUTUBE_PACKAGE_NAME) != true) {
+        val targetPackage = packageName?.toString()?.takeIf(TARGET_PACKAGE_NAMES::contains)
+        if (targetPackage == null) {
             coalescer.cancelAndReset()
             updateDeviceState(foregroundPackage = null)
             return false
         }
+        if (mutableState.value.foregroundPackage != targetPackage) {
+            coalescer.cancelAndReset()
+        }
 
-        val sample = updateDeviceState(foregroundPackage = YOUTUBE_PACKAGE_NAME)
+        val sample = updateDeviceState(foregroundPackage = targetPackage)
         if (!sample.screenInteractive || !sample.deviceUnlocked) {
             coalescer.cancelAndReset()
             return false
@@ -68,7 +72,7 @@ internal class AccessibilityAdapterController(
 
         coalescer.offer(
             AccessibilityWindowEvent(
-                packageName = YOUTUBE_PACKAGE_NAME,
+                packageName = targetPackage,
                 eventType = eventType,
                 elapsedRealtimeMillis = elapsedRealtimeMillis.coerceAtLeast(0L),
             ),
@@ -92,7 +96,7 @@ internal class AccessibilityAdapterController(
     }
 
     override suspend fun capture(event: AccessibilityWindowEvent): WindowSnapshot? {
-        if (!connected || event.packageName != YOUTUBE_PACKAGE_NAME) return null
+        if (!connected || event.packageName !in TARGET_PACKAGE_NAMES) return null
         val snapshot = try {
             snapshotCapture(event)
         } catch (cancellation: CancellationException) {
@@ -100,11 +104,11 @@ internal class AccessibilityAdapterController(
         } catch (_: Exception) {
             null
         }
-        if (!connected || snapshot?.packageName != YOUTUBE_PACKAGE_NAME) {
+        if (!connected || snapshot?.packageName != event.packageName) {
             mutableState.value = mutableState.value.copy(foregroundPackage = null)
             return null
         }
-        mutableState.value = mutableState.value.copy(foregroundPackage = YOUTUBE_PACKAGE_NAME)
+        mutableState.value = mutableState.value.copy(foregroundPackage = event.packageName)
         return snapshot
     }
 
@@ -123,6 +127,8 @@ internal class AccessibilityAdapterController(
 
     companion object {
         const val YOUTUBE_PACKAGE_NAME = "com.google.android.youtube"
+        const val INSTAGRAM_PACKAGE_NAME = "com.instagram.android"
+        val TARGET_PACKAGE_NAMES = setOf(YOUTUBE_PACKAGE_NAME, INSTAGRAM_PACKAGE_NAME)
 
         // Values are stable Android AccessibilityEvent constants and kept Android-free for unit tests.
         const val TYPE_WINDOW_STATE_CHANGED = 32
