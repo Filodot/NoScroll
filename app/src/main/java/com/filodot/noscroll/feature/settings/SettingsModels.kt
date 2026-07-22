@@ -32,6 +32,13 @@ data class SettingsUiState(
     val accessibilityStatus: SystemAccessUiStatus,
     val usageAccessStatus: SystemAccessUiStatus,
     val youtubeVersionLabel: String? = null,
+    val instagramVersionLabel: String? = null,
+    val monitoringHealthLabel: String = "Не подключён",
+    val monitoringHealthy: Boolean = false,
+    val lastHeartbeatLabel: String? = null,
+    val lastInstagramEventLabel: String? = null,
+    val recoveryCount: Int = 0,
+    val lastFailureCode: String? = null,
     val diagnostics: RedactedDiagnosticsUiState,
     val appVersionLabel: String,
 )
@@ -40,6 +47,7 @@ sealed interface SettingsAction {
     data object OpenAccessibilitySettings : SettingsAction
     data object OpenUsageAccessSettings : SettingsAction
     data object RefreshSystemAccess : SettingsAction
+    data object OpenAppDetailsSettings : SettingsAction
     data object OpenEmergencyHistory : SettingsAction
     data object OpenPrivacyDocument : SettingsAction
     data object OpenLicenses : SettingsAction

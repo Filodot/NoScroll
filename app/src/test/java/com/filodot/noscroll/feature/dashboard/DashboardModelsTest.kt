@@ -38,6 +38,17 @@ class DashboardModelsTest {
     }
 
     @Test
+    fun `stopped monitoring reports protection error even when access remains enabled`() {
+        val state = DashboardUiState(
+            dateLabel = "14 июля",
+            accessibilityEnabled = true,
+            monitoringHealthy = false,
+        )
+
+        assertEquals(DashboardProtectionStatus.ACCESSIBILITY_ERROR, state.protectionStatus)
+    }
+
+    @Test
     fun `unavailable daily access is reported only while accessibility works`() {
         val unavailable = DashboardUiState(
             dateLabel = "14 июля",

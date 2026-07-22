@@ -95,6 +95,13 @@ internal class AccessibilityAdapterController(
         updateDeviceState(foregroundPackage = null)
     }
 
+    /** Android can interrupt feedback without unbinding the enabled service. */
+    fun onTransientInterrupt() {
+        if (!connected) return
+        coalescer.cancelAndReset()
+        updateDeviceState(foregroundPackage = null)
+    }
+
     override suspend fun capture(event: AccessibilityWindowEvent): WindowSnapshot? {
         if (!connected || event.packageName !in TARGET_PACKAGE_NAMES) return null
         val snapshot = try {

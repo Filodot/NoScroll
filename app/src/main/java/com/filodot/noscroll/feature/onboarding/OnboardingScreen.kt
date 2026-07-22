@@ -47,15 +47,16 @@ import com.filodot.noscroll.core.model.LimitPreset
 import com.filodot.noscroll.core.settings.LimitPresets
 
 private const val AccessibilityDisclosure =
-    "Чтобы распознавать Shorts и вовремя останавливать ленту, NoScrol получает события " +
-        "интерфейса YouTube. Сервис может проверять элементы активного экрана и выполнить " +
-        "системное действие «Назад», когда доступ к Shorts закончился. Задание показывается " +
-        "только внутри приложения NoScrol. Данные обрабатываются на устройстве: NoScrol не " +
+    "Чтобы распознавать Shorts, учитывать время в Instagram и вовремя останавливать ленту, " +
+        "NoScroll получает события интерфейса этих приложений. Сервис может проверять элементы " +
+        "активного экрана и выполнить системное действие «Назад», когда доступ закончился. " +
+        "Задание показывается только внутри приложения NoScroll. Данные обрабатываются на " +
+        "устройстве: NoScroll не " +
         "сохраняет содержимое экрана, названия видео, историю просмотров или введённый в " +
         "YouTube текст и никуда их не отправляет."
 
 private const val UsageAccessDisclosure =
-    "Для общего дневного лимита NoScrol читает длительность использования YouTube. Доступ не " +
+    "Для общего дневного лимита NoScroll читает длительность использования YouTube. Доступ не " +
         "раскрывает содержимое видео или действия внутри YouTube. Без него задания в Shorts " +
         "продолжат работать, но общий дневной лимит будет недоступен."
 
@@ -97,7 +98,7 @@ private fun WelcomeScreen(onAction: (OnboardingAction) -> Unit) {
         Surface(
             modifier = Modifier
                 .size(64.dp)
-                .semantics { contentDescription = "Логотип NoScrol" },
+                .semantics { contentDescription = "Логотип NoScroll" },
             shape = RoundedCornerShape(20.dp),
             color = MaterialTheme.colorScheme.primaryContainer,
         ) {
@@ -113,7 +114,7 @@ private fun WelcomeScreen(onAction: (OnboardingAction) -> Unit) {
         ScreenTitle("Остановите автоматический скролл")
         Spacer(Modifier.height(12.dp))
         Text(
-            text = "NoScrol делает короткую паузу каждые несколько минут Shorts и помогает " +
+            text = "NoScroll делает короткие осознанные паузы в Shorts и Instagram и помогает " +
                 "соблюдать общий лимит YouTube",
             style = MaterialTheme.typography.bodyLarge,
         )
@@ -180,7 +181,7 @@ private fun AccessibilityDisclosureScreen(
     onAction: (OnboardingAction) -> Unit,
 ) {
     OnboardingPage(step = 3) {
-        ScreenTitle("Доступ к интерфейсу YouTube")
+        ScreenTitle("Доступ к YouTube и Instagram")
         Spacer(Modifier.height(12.dp))
         Text(
             text = AccessibilityDisclosure,
@@ -196,10 +197,20 @@ private fun AccessibilityDisclosureScreen(
         if (state.accessibilityReturnFailed) {
             Spacer(Modifier.height(12.dp))
             InlineMessage(
-                text = "Доступ пока не включён. Вы можете вернуться в настройки или продолжить " +
-                    "без активной защиты.",
+                text = "Доступ пока не включён. На Android 13+ после установки APK откройте " +
+                    "карточку приложения, выберите меню ⋮ → «Разрешить ограниченные настройки», " +
+                    "затем снова включите службу Accessibility.",
                 error = true,
             )
+            Spacer(Modifier.height(12.dp))
+            OutlinedButton(
+                onClick = { onAction(OnboardingAction.OpenAppDetailsSettings) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+            ) {
+                Text("Открыть карточку приложения")
+            }
         }
         Spacer(Modifier.height(24.dp))
         PrimaryAction(
@@ -277,7 +288,7 @@ private fun ReadinessScreen(
         ScreenTitle("Проверим готовность")
         Spacer(Modifier.height(20.dp))
         PermissionStatusRow(
-            label = "Доступ к интерфейсу YouTube",
+            label = "Доступ к YouTube и Instagram",
             status = state.accessibilityStatus,
         )
         HorizontalDivider()
@@ -295,6 +306,11 @@ private fun ReadinessScreen(
             label = "Приложение YouTube",
             value = if (state.youtubeInstalled) "Установлено" else "Не найдено",
         )
+        HorizontalDivider()
+        SummaryRow(
+            label = "Приложение Instagram",
+            value = if (state.instagramInstalled) "Установлено" else "Не найдено",
+        )
         if (!state.youtubeInstalled) {
             Spacer(Modifier.height(16.dp))
             InlineMessage(
@@ -302,10 +318,17 @@ private fun ReadinessScreen(
                 error = false,
             )
         }
+        if (!state.instagramInstalled) {
+            Spacer(Modifier.height(16.dp))
+            InlineMessage(
+                text = "Instagram не найден. Его ограничение начнёт работать после установки.",
+                error = false,
+            )
+        }
         if (state.accessibilityStatus != PermissionUiStatus.ENABLED) {
             Spacer(Modifier.height(16.dp))
             InlineMessage(
-                text = "Чтобы запустить защиту Shorts, включите доступ к интерфейсу YouTube.",
+                text = "Чтобы запустить защиту, включите доступ к YouTube и Instagram.",
                 error = true,
             )
         }

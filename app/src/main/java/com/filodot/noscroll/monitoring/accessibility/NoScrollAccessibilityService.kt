@@ -77,8 +77,8 @@ class NoScrollAccessibilityService :
     }
 
     override fun onInterrupt() {
-        controller.onServiceInterrupted()
-        stopRuntimeConnection()
+        controller.onTransientInterrupt()
+        runtime()?.monitoring?.onTransientServiceInterrupt()
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
@@ -100,7 +100,8 @@ class NoScrollAccessibilityService :
     /** Leaves the monitored app first, then opens the in-app challenge screen. */
     fun ejectTargetAndOpenChallenge() {
         mainHandler.post {
-            performGlobalAction(GLOBAL_ACTION_BACK)
+            val leftTarget = performGlobalAction(GLOBAL_ACTION_BACK)
+            if (!leftTarget) performGlobalAction(GLOBAL_ACTION_HOME)
             mainHandler.postDelayed(
                 {
                     try {

@@ -488,7 +488,7 @@ private fun NoScrollMark() {
     Surface(
         modifier = Modifier
             .size(56.dp)
-            .semantics { contentDescription = "NoScrol" },
+            .semantics { contentDescription = "NoScroll" },
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.primaryContainer,
     ) {

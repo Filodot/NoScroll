@@ -232,6 +232,44 @@ class AccessibilityAdapterControllerTest {
     }
 
     @Test
+    fun `transient interrupt drops pending scan but keeps service connected`() = runTest {
+        val scheduler = ManualAccessibilityScanScheduler()
+        val controller = controller(scheduler)
+        val received = mutableListOf<AccessibilityWindowEvent>()
+        backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            controller.events.collect { event -> received += event }
+        }
+        controller.onServiceConnected()
+        assertTrue(
+            controller.onAccessibilityEvent(
+                AccessibilityAdapterController.YOUTUBE_PACKAGE_NAME,
+                AccessibilityAdapterController.TYPE_WINDOW_CONTENT_CHANGED,
+                0,
+            ),
+        )
+
+        controller.onTransientInterrupt()
+        scheduler.advanceBy(1_000)
+        runCurrent()
+        assertTrue(received.isEmpty())
+        assertTrue(
+            controller.onAccessibilityEvent(
+                AccessibilityAdapterController.INSTAGRAM_PACKAGE_NAME,
+                AccessibilityAdapterController.TYPE_WINDOW_STATE_CHANGED,
+                1_000,
+            ),
+        )
+        scheduler.advanceBy(150)
+        runCurrent()
+
+        assertEquals(1, received.size)
+        assertEquals(
+            AccessibilityAdapterController.INSTAGRAM_PACKAGE_NAME,
+            received.single().packageName,
+        )
+    }
+
+    @Test
     fun `snapshot capture fails open before connection after revoke and on provider failure`() = runTest {
         val scheduler = ManualAccessibilityScanScheduler()
         var captures = 0

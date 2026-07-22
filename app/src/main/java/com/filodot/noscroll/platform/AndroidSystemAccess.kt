@@ -18,6 +18,8 @@ data class SystemAccessSnapshot(
     val usageAccessGranted: Boolean,
     val youtubeInstalled: Boolean,
     val youtubeVersionName: String?,
+    val instagramInstalled: Boolean,
+    val instagramVersionName: String?,
     val appVersionName: String,
 )
 
@@ -35,15 +37,23 @@ class AndroidSystemAccess(private val context: Context) {
         "package:${context.packageName}".toUri(),
     ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
+    fun appDetailsSettingsIntent(): Intent = Intent(
+        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+        "package:${context.packageName}".toUri(),
+    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
     private fun readSnapshot(): SystemAccessSnapshot {
         val youtubePackage = YOUTUBE_PACKAGE_NAME
         val youtubeInfo = packageInfo(youtubePackage)
+        val instagramInfo = packageInfo(INSTAGRAM_PACKAGE_NAME)
         return SystemAccessSnapshot(
             accessibilityGranted = isAccessibilityEnabled(),
             usageAccessGranted = AndroidUsageAccessChecker(context).checkAccess() ==
                 UsageAccessState.GRANTED,
             youtubeInstalled = youtubeInfo != null,
             youtubeVersionName = youtubeInfo?.versionName,
+            instagramInstalled = instagramInfo != null,
+            instagramVersionName = instagramInfo?.versionName,
             appVersionName = packageInfo(context.packageName)?.versionName ?: "—",
         )
     }
@@ -66,5 +76,6 @@ class AndroidSystemAccess(private val context: Context) {
 
     companion object {
         const val YOUTUBE_PACKAGE_NAME = "com.google.android.youtube"
+        const val INSTAGRAM_PACKAGE_NAME = "com.instagram.android"
     }
 }

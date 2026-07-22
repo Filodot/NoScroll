@@ -8,6 +8,8 @@ import com.filodot.noscroll.core.model.LimitPreset
 import com.filodot.noscroll.core.model.UserSettings
 import java.io.File
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -17,6 +19,7 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -88,6 +91,27 @@ class DataStoreSettingsRepositoryTest {
         assertEquals(cleared, awaitSettings(repository, cleared))
     }
 
+    @Test
+    fun saveIsVisibleToRuntimeBeforeSlowStorageCommitFinishes() = runBlocking {
+        val storage = DelayedPreferencesDataStore()
+        val repository = DataStoreSettingsRepository(storage, scope)
+        awaitSettings(repository, UserSettings())
+        val expected = UserSettings(
+            onboardingCompleted = true,
+            instagramIntervalMinutes = 17,
+        )
+
+        val saveJob = launch(start = CoroutineStart.UNDISPATCHED) {
+            repository.save(expected)
+        }
+        storage.writeStarted.await()
+
+        assertEquals(expected, repository.settings.value)
+        storage.allowWrite.complete(Unit)
+        saveJob.join()
+        assertEquals(expected, repository.settings.value)
+    }
+
     private fun createRepository(): DataStoreSettingsRepository =
         DataStoreSettingsRepository(createDataStore(), scope)
 
@@ -113,5 +137,23 @@ class DataStoreSettingsRepositoryTest {
         override suspend fun updateData(
             transform: suspend (Preferences) -> Preferences,
         ): Preferences = transform(state.value).also { state.value = it }
+    }
+
+    private class DelayedPreferencesDataStore : DataStore<Preferences> {
+        private val state = MutableStateFlow<Preferences>(emptyPreferences())
+        val writeStarted = CompletableDeferred<Unit>()
+        val allowWrite = CompletableDeferred<Unit>()
+
+        override val data: Flow<Preferences> = state
+
+        override suspend fun updateData(
+            transform: suspend (Preferences) -> Preferences,
+        ): Preferences {
+            val updated = transform(state.value)
+            writeStarted.complete(Unit)
+            allowWrite.await()
+            state.value = updated
+            return updated
+        }
     }
 }

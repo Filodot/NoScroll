@@ -34,6 +34,38 @@ class TaskDifficultyPolicyTest {
     }
 
     @Test
+    fun `first active sample is not lost before timestamp is initialized`() {
+        val updated = policy.update(
+            state = TaskDifficultyState(),
+            now = now,
+            shortsActive = true,
+            config = config,
+            observedActiveSeconds = 1,
+        )
+
+        assertEquals(1L, updated.loadSeconds)
+        assertEquals(now, updated.updatedAt)
+    }
+
+    @Test
+    fun `a full day away recovers accumulated load without periodic writes`() {
+        val state = TaskDifficultyState(
+            loadSeconds = 25 * 60L,
+            updatedAt = now,
+        )
+
+        val recovered = policy.update(
+            state = state,
+            now = now.plusSeconds(24 * 60 * 60L),
+            shortsActive = false,
+            config = config,
+        )
+
+        assertEquals(0L, recovered.loadSeconds)
+        assertEquals(0L, recovered.recoverySeconds)
+    }
+
+    @Test
     fun `twenty five watched minutes reach hard regardless of trigger`() {
         val state = TaskDifficultyState(loadSeconds = 25 * 60L, updatedAt = now)
 

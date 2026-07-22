@@ -43,7 +43,19 @@ class TaskDifficultyPolicy {
     ): TaskDifficultyState {
         val normalized = normalize(state)
         val previous = normalized.updatedAt
-        if (previous == null || now.isBefore(previous)) return normalized.copy(updatedAt = now)
+        if (previous == null) {
+            val initialActiveSeconds = if (shortsActive) {
+                observedActiveSeconds.orZero().coerceAtLeast(0)
+            } else {
+                0
+            }
+            return normalized.copy(
+                loadSeconds = normalized.loadSeconds.saturatingAdd(initialActiveSeconds),
+                updatedAt = now,
+                recoverySeconds = if (initialActiveSeconds > 0) 0 else normalized.recoverySeconds,
+            )
+        }
+        if (now.isBefore(previous)) return normalized.copy(updatedAt = now)
 
         val elapsedSeconds = Duration.between(previous, now).seconds.coerceAtLeast(0)
         if (elapsedSeconds == 0L) return normalized.copy(updatedAt = now)
@@ -105,3 +117,5 @@ private fun Long.saturatingAdd(other: Long): Long =
     if (other > Long.MAX_VALUE - this) Long.MAX_VALUE else this + other
 
 private const val SECONDS_PER_MINUTE = 60L
+
+private fun Long?.orZero(): Long = this ?: 0L

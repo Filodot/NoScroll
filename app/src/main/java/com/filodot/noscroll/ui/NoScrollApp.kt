@@ -83,6 +83,7 @@ import com.filodot.noscroll.feature.tasks.TaskSettingsScreen
 import com.filodot.noscroll.feature.tasks.TaskSettingsUiState
 import com.filodot.noscroll.monitoring.runtime.MonitoringDiagnostics
 import com.filodot.noscroll.monitoring.runtime.MonitoringCoordinator
+import com.filodot.noscroll.monitoring.runtime.MonitoringHealthStatus
 import com.filodot.noscroll.platform.SystemAccessSnapshot
 import java.time.Duration
 import java.time.Instant
@@ -141,6 +142,7 @@ fun NoScrollApp(
             pendingTask = pendingTask,
             emergencyState = emergencyState,
             access = accessState,
+            diagnostics = diagnostics ?: MonitoringDiagnostics(),
         )
     }
     val settingsState = if (accessState == null) {
@@ -322,8 +324,13 @@ fun NoScrollApp(
                     snackbarHostState.showSnackbar("Политика приватности доступна в Настройках")
                 }
 
+                OnboardingEffect.OpenAppDetailsSettings ->
+                    appGraph.systemAccess?.let { access ->
+                        context.openSystemSettings(access.appDetailsSettingsIntent())
+                    }
+
                 OnboardingEffect.ShowHowItWorks -> scope.launch {
-                    snackbarHostState.showSnackbar("NoScrol создаёт паузу, не запрещая выход")
+                    snackbarHostState.showSnackbar("NoScroll создаёт паузу, не запрещая выход")
                 }
 
                 OnboardingEffect.RefreshPermissionStates ->
@@ -550,6 +557,11 @@ fun NoScrollApp(
                                         context.openSystemSettings(access.usageAccessSettingsIntent())
                                     }
 
+                                SettingsAction.OpenAppDetailsSettings ->
+                                    appGraph.systemAccess?.let { access ->
+                                        context.openSystemSettings(access.appDetailsSettingsIntent())
+                                    }
+
                                 SettingsAction.RefreshSystemAccess -> {
                                     appGraph.systemAccess?.refresh()
                                     scope.launch {
@@ -686,6 +698,7 @@ private fun buildDashboardState(
     pendingTask: PendingTask?,
     emergencyState: EmergencyState,
     access: SystemAccessSnapshot,
+    diagnostics: MonitoringDiagnostics,
 ): DashboardUiState {
     val activeEmergency = emergencyState.activeEvent
     val now = Instant.now()
@@ -694,6 +707,8 @@ private fun buildDashboardState(
             DateTimeFormatter.ofPattern("d MMMM", Locale.forLanguageTag("ru")),
         ),
         accessibilityEnabled = access.accessibilityGranted,
+        monitoringHealthy = diagnostics.serviceConnected &&
+            diagnostics.healthStatus != MonitoringHealthStatus.DISCONNECTED,
         shorts = if (settings.shortsGateEnabled) {
             ShortsLimitUiState.Enabled(
                 cycleUsedSeconds = cycle.usedSeconds,
@@ -764,9 +779,26 @@ private fun buildSettingsState(
         SystemAccessUiStatus.NOT_ENABLED
     },
     youtubeVersionLabel = access.youtubeVersionName,
+    instagramVersionLabel = access.instagramVersionName,
+    monitoringHealthLabel = when (diagnostics.healthStatus) {
+        MonitoringHealthStatus.DISCONNECTED -> "Не подключён"
+        MonitoringHealthStatus.STARTING -> "Запускается"
+        MonitoringHealthStatus.RUNNING -> "Работает"
+        MonitoringHealthStatus.RECOVERING -> "Восстанавливается"
+    },
+    monitoringHealthy = diagnostics.serviceConnected &&
+        diagnostics.healthStatus == MonitoringHealthStatus.RUNNING,
+    lastHeartbeatLabel = diagnostics.lastHeartbeatAt?.atZone(ZoneId.systemDefault())
+        ?.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.MEDIUM)),
+    lastInstagramEventLabel = diagnostics.lastInstagramEventAt?.atZone(ZoneId.systemDefault())
+        ?.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.MEDIUM)),
+    recoveryCount = diagnostics.recoveryCount,
+    lastFailureCode = diagnostics.lastFailureCode,
     diagnostics = RedactedDiagnosticsUiState(
         detectorStatus = when {
             !access.accessibilityGranted -> DetectorUiStatus.INACTIVE
+            diagnostics.healthStatus == MonitoringHealthStatus.RECOVERING ->
+                DetectorUiStatus.ERROR
             diagnostics.detectorState == ShortsDetectionState.UNKNOWN ->
                 DetectorUiStatus.UNKNOWN_LAYOUT
 
@@ -828,6 +860,7 @@ private fun refreshOnboardingPermissions(
                 accessibilityEnabled = access.accessibilityGranted,
                 usageAccessEnabled = access.usageAccessGranted,
                 youtubeInstalled = access.youtubeInstalled,
+                instagramInstalled = access.instagramInstalled,
             ),
         )
     }

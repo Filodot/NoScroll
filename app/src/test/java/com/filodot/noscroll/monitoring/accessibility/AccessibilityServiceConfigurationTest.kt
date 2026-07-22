@@ -68,6 +68,8 @@ class AccessibilityServiceConfigurationTest {
 
         assertTrue(mainManifest.contains("NoScrollAccessibilityService"))
         assertTrue(mainManifest.contains("android.permission.BIND_ACCESSIBILITY_SERVICE"))
+        assertTrue(mainManifest.contains("com.google.android.youtube"))
+        assertTrue(mainManifest.contains("com.instagram.android"))
         assertFalse(mainManifest.contains("BlockingActivity"))
         assertFalse(debugManifest.contains("NoScrollAccessibilityService"))
     }

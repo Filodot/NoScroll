@@ -34,6 +34,7 @@ data class OnboardingUiState(
     val waitingForUsageReturn: Boolean = false,
     val accessibilityReturnFailed: Boolean = false,
     val usageReturnFailed: Boolean = false,
+    val instagramInstalled: Boolean = true,
 ) {
     val canStart: Boolean
         get() = step == OnboardingStep.READINESS &&
@@ -48,6 +49,7 @@ sealed interface OnboardingAction {
     data class SetAccessibilityConsent(val checked: Boolean) : OnboardingAction
     data object RequestAccessibilitySettings : OnboardingAction
     data object OpenPrivacyPolicy : OnboardingAction
+    data object OpenAppDetailsSettings : OnboardingAction
     data object SkipAccessibility : OnboardingAction
     data class AccessibilitySettingsReturned(val enabled: Boolean) : OnboardingAction
     data object RequestUsageAccessSettings : OnboardingAction
@@ -57,6 +59,7 @@ sealed interface OnboardingAction {
         val accessibilityEnabled: Boolean,
         val usageAccessEnabled: Boolean,
         val youtubeInstalled: Boolean,
+        val instagramInstalled: Boolean = true,
     ) : OnboardingAction
 
     data object ReviewMissingPermissions : OnboardingAction
@@ -68,6 +71,7 @@ sealed interface OnboardingEffect {
     data object OpenAccessibilitySettings : OnboardingEffect
     data object OpenUsageAccessSettings : OnboardingEffect
     data object OpenPrivacyPolicy : OnboardingEffect
+    data object OpenAppDetailsSettings : OnboardingEffect
     data object RefreshPermissionStates : OnboardingEffect
     data class Completed(val selection: OnboardingSelection) : OnboardingEffect
 }
@@ -105,6 +109,8 @@ class OnboardingStateHolder(
 
             OnboardingAction.RequestAccessibilitySettings -> requestAccessibilitySettings()
             OnboardingAction.OpenPrivacyPolicy -> emitEffect(OnboardingEffect.OpenPrivacyPolicy)
+            OnboardingAction.OpenAppDetailsSettings ->
+                emitEffect(OnboardingEffect.OpenAppDetailsSettings)
             OnboardingAction.SkipAccessibility -> skipAccessibility()
             is OnboardingAction.AccessibilitySettingsReturned ->
                 handleAccessibilityReturn(action.enabled)
@@ -224,6 +230,7 @@ class OnboardingStateHolder(
                 else -> PermissionUiStatus.NOT_GRANTED
             },
             youtubeInstalled = action.youtubeInstalled,
+            instagramInstalled = action.instagramInstalled,
         )
     }
 

@@ -73,21 +73,22 @@ fun SettingsScreen(
                 Spacer(Modifier.height(12.dp))
                 ActionCard(
                     title = "Данные остаются на телефоне",
-                    body = "NoScrol хранит настройки, агрегированное время, результаты заданий и " +
-                        "причины Emergency Stop только на устройстве. Содержимое экрана YouTube, " +
-                        "названия видео, историю просмотров и введённый текст приложение не сохраняет.",
+                    body = "NoScroll хранит настройки, агрегированное время, результаты заданий и " +
+                        "причины Emergency Stop только на устройстве. Содержимое экранов YouTube " +
+                        "и Instagram, названия видео, историю просмотров и введённый текст " +
+                        "приложение не сохраняет.",
                     actionLabel = "Политика приватности",
                     onClick = { onAction(SettingsAction.OpenPrivacyDocument) },
                 )
                 Spacer(Modifier.height(24.dp))
                 SectionTitle("Диагностика")
                 Spacer(Modifier.height(12.dp))
-                DiagnosticsCard(state.diagnostics)
+                DiagnosticsCard(state)
                 Spacer(Modifier.height(24.dp))
                 SectionTitle("О приложении")
                 Spacer(Modifier.height(12.dp))
                 ActionCard(
-                    title = "NoScrol ${state.appVersionLabel}",
+                    title = "NoScroll ${state.appVersionLabel}",
                     body = "Инструмент осознанной паузы, а не медицинское средство. " +
                         "Абсолютная блокировка на всех версиях YouTube не гарантируется.",
                     actionLabel = "Лицензии",
@@ -135,6 +136,25 @@ private fun SystemAccessCard(
                 label = "Версия YouTube",
                 value = state.youtubeVersionLabel ?: "Не найден",
             )
+            HorizontalDivider()
+            KeyValueRow(
+                label = "Версия Instagram",
+                value = state.instagramVersionLabel ?: "Не найден",
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "Если Android 13+ не разрешает включить Accessibility для скачанного " +
+                    "APK: откройте карточку приложения, нажмите меню ⋮ и выберите " +
+                    "«Разрешить ограниченные настройки».",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            TextButton(
+                onClick = { onAction(SettingsAction.OpenAppDetailsSettings) },
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) {
+                Text("Открыть карточку приложения")
+            }
             Spacer(Modifier.height(8.dp))
             TextButton(
                 onClick = { onAction(SettingsAction.RefreshSystemAccess) },
@@ -195,7 +215,8 @@ private fun AccessRow(
 }
 
 @Composable
-private fun DiagnosticsCard(diagnostics: RedactedDiagnosticsUiState) {
+private fun DiagnosticsCard(state: SettingsUiState) {
+    val diagnostics = state.diagnostics
     val statusLabel = when (diagnostics.detectorStatus) {
         DetectorUiStatus.READY -> "Готов"
         DetectorUiStatus.INACTIVE -> "Неактивен"
@@ -213,7 +234,9 @@ private fun DiagnosticsCard(diagnostics: RedactedDiagnosticsUiState) {
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (diagnostics.detectorStatus == DetectorUiStatus.ERROR) {
+            containerColor = if (
+                diagnostics.detectorStatus == DetectorUiStatus.ERROR || !state.monitoringHealthy
+            ) {
                 MaterialTheme.colorScheme.errorContainer
             } else {
                 MaterialTheme.colorScheme.surfaceVariant
@@ -221,6 +244,18 @@ private fun DiagnosticsCard(diagnostics: RedactedDiagnosticsUiState) {
         ),
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
+            KeyValueRow("Мониторинг", state.monitoringHealthLabel)
+            HorizontalDivider()
+            KeyValueRow("Последний heartbeat", state.lastHeartbeatLabel ?: "Нет")
+            HorizontalDivider()
+            KeyValueRow("Последнее событие Instagram", state.lastInstagramEventLabel ?: "Нет")
+            HorizontalDivider()
+            KeyValueRow("Автовосстановлений", state.recoveryCount.toString())
+            state.lastFailureCode?.let { failureCode ->
+                HorizontalDivider()
+                KeyValueRow("Последний код восстановления", failureCode)
+            }
+            HorizontalDivider()
             KeyValueRow("Статус детектора", statusLabel)
             HorizontalDivider()
             KeyValueRow("Последний результат", resultLabel)
@@ -236,7 +271,7 @@ private fun DiagnosticsCard(diagnostics: RedactedDiagnosticsUiState) {
             Spacer(Modifier.height(8.dp))
             Text(
                 text = "Диагностика содержит только коды и счётчики — без текста и элементов " +
-                    "экрана YouTube.",
+                    "экрана YouTube или Instagram.",
                 style = MaterialTheme.typography.bodyMedium,
             )
         }

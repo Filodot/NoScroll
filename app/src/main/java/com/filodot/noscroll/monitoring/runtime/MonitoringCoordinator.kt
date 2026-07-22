@@ -1,6 +1,7 @@
 package com.filodot.noscroll.monitoring.runtime
 
 import android.os.SystemClock
+import android.util.Log
 import com.filodot.noscroll.core.contracts.WallClock
 import com.filodot.noscroll.core.model.ArithmeticOperation
 import com.filodot.noscroll.core.model.AccessibilityWindowEvent
@@ -46,7 +47,10 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -55,17 +59,34 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
+
+enum class MonitoringHealthStatus {
+    DISCONNECTED,
+    STARTING,
+    RUNNING,
+    RECOVERING,
+}
 
 data class MonitoringDiagnostics(
     val detectorState: ShortsDetectionState = ShortsDetectionState.UNKNOWN,
     val lastRecognitionAt: Instant? = null,
+    val lastTargetEventAt: Instant? = null,
+    val lastInstagramEventAt: Instant? = null,
+    val lastHeartbeatAt: Instant? = null,
     val unknownCount: Int = 0,
     val rulesVersion: Int = 1,
+    val healthStatus: MonitoringHealthStatus = MonitoringHealthStatus.DISCONNECTED,
+    val serviceConnected: Boolean = false,
+    val recoveryCount: Int = 0,
+    val lastFailureCode: String? = null,
 )
 
 class MonitoringCoordinator(
@@ -113,6 +134,9 @@ class MonitoringCoordinator(
     private var emergencyOverrideActive = false
     private var activeService: NoScrollAccessibilityService? = null
     private var shortsEjectionBlockedUntilElapsedMillis = 0L
+    private val heartbeatWake = Channel<Unit>(Channel.CONFLATED)
+    private val failureLock = Any()
+    private var activeFailureCodes: Set<String> = emptySet()
 
     val enforcement: StateFlow<EnforcementUiState?> = mutableEnforcement.asStateFlow()
     val diagnostics: StateFlow<MonitoringDiagnostics> = mutableDiagnostics.asStateFlow()
@@ -122,50 +146,82 @@ class MonitoringCoordinator(
         sessionJob?.cancel()
         activeService = service
         lastTickElapsedMillis = null
+        while (heartbeatWake.tryReceive().isSuccess) Unit
+        synchronized(failureLock) { activeFailureCodes = emptySet() }
+        mutableDiagnostics.update {
+            it.copy(
+                healthStatus = MonitoringHealthStatus.STARTING,
+                serviceConnected = true,
+                lastFailureCode = null,
+            )
+        }
         sessionJob = scope.launch {
             ready.first { it }
-            launch {
-                service.state.collect { state ->
-                    latestDeviceState = state
-                    if (state.foregroundPackage != AccessibilityAdapterController.YOUTUBE_PACKAGE_NAME) {
-                        latestDetectionState = ShortsDetectionState.NOT_SHORTS
-                        detector.resetToNotShorts(SystemClock.elapsedRealtime())
-                        entryGate.onYouTubeForegroundLost()
+            supervisorScope {
+                launch {
+                    runRecoveringStream(FAILURE_DEVICE_STATE_STREAM) {
+                        service.state.collect { state ->
+                            handleDeviceState(state)
+                            heartbeatWake.trySend(Unit)
+                        }
                     }
-                    evaluatePolicy(triggeringEvent = null)
                 }
-            }
-            launch {
-                service.events.collect { event ->
-                    if (event.packageName == AccessibilityAdapterController.INSTAGRAM_PACKAGE_NAME) {
-                        latestDetectionState = ShortsDetectionState.NOT_SHORTS
-                        evaluatePolicy(triggeringEvent = event)
-                        return@collect
+                launch {
+                    runRecoveringStream(FAILURE_EVENT_STREAM) {
+                        service.events.collect { event ->
+                            val eventAt = wallClock.now()
+                            mutableDiagnostics.update { diagnostics ->
+                                diagnostics.copy(
+                                    lastTargetEventAt = eventAt,
+                                    lastInstagramEventAt = if (
+                                        event.packageName ==
+                                        AccessibilityAdapterController.INSTAGRAM_PACKAGE_NAME
+                                    ) {
+                                        eventAt
+                                    } else {
+                                        diagnostics.lastInstagramEventAt
+                                    },
+                                )
+                            }
+                            if (
+                                event.packageName ==
+                                AccessibilityAdapterController.INSTAGRAM_PACKAGE_NAME
+                            ) {
+                                latestDetectionState = ShortsDetectionState.NOT_SHORTS
+                                evaluatePolicy(triggeringEvent = event)
+                                return@collect
+                            }
+                            val snapshot = service.capture(event) ?: return@collect
+                            val result = detector.evaluate(snapshot)
+                            latestDetectionState = result.state
+                            entryGate.onDetection(result.state, SystemClock.elapsedRealtime())
+                            mutableDiagnostics.update { diagnostics ->
+                                diagnostics.copy(
+                                    detectorState = result.state,
+                                    lastRecognitionAt = eventAt,
+                                    unknownCount = diagnostics.unknownCount +
+                                        if (result.state == ShortsDetectionState.UNKNOWN) 1 else 0,
+                                    rulesVersion = result.rulesVersion,
+                                )
+                            }
+                            evaluatePolicy(triggeringEvent = event)
+                        }
                     }
-                    val snapshot = service.capture(event) ?: return@collect
-                    val result = detector.evaluate(snapshot)
-                    latestDetectionState = result.state
-                    entryGate.onDetection(result.state, SystemClock.elapsedRealtime())
-                    mutableDiagnostics.value = mutableDiagnostics.value.copy(
-                        detectorState = result.state,
-                        lastRecognitionAt = Instant.now(),
-                        unknownCount = mutableDiagnostics.value.unknownCount +
-                            if (result.state == ShortsDetectionState.UNKNOWN) 1 else 0,
-                        rulesVersion = result.rulesVersion,
-                    )
-                    evaluatePolicy(triggeringEvent = event)
                 }
-            }
-            launch {
-                while (isActive) {
-                    recordHeartbeat()
-                    delay(HEARTBEAT_MILLIS)
+                launch {
+                    while (isActive) {
+                        runGuarded(FAILURE_HEARTBEAT) {
+                            recordHeartbeat()
+                            markHeartbeatHealthy()
+                        }
+                        awaitNextHeartbeat()
+                    }
                 }
-            }
-            launch {
-                while (isActive) {
-                    reconcileDailyUsage()
-                    delay(RECONCILIATION_MILLIS)
+                launch {
+                    while (isActive) {
+                        runGuarded(FAILURE_RECONCILIATION) { reconcileDailyUsage() }
+                        delay(RECONCILIATION_MILLIS)
+                    }
                 }
             }
         }
@@ -181,6 +237,23 @@ class MonitoringCoordinator(
         entryGate.reset()
         deferredIntervalGate.reset()
         activeService = null
+        synchronized(failureLock) { activeFailureCodes = emptySet() }
+        mutableDiagnostics.update {
+            it.copy(
+                healthStatus = MonitoringHealthStatus.DISCONNECTED,
+                serviceConnected = false,
+            )
+        }
+    }
+
+    fun onTransientServiceInterrupt() {
+        latestDeviceState = DeviceState(false, false, null)
+        latestDetectionState = ShortsDetectionState.UNKNOWN
+        lastTickElapsedMillis = null
+        entryGate.onYouTubeForegroundLost()
+        deferredIntervalGate.reset()
+        heartbeatWake.trySend(Unit)
+        recordRuntimeFailure(FAILURE_TRANSIENT_INTERRUPT)
     }
 
     suspend fun verifyAnswer(taskId: String, answer: String): Boolean = mutex.withLock {
@@ -201,6 +274,8 @@ class MonitoringCoordinator(
         val intervalMinutes = grantMinutesFor(task.target).coerceAtLeast(1)
         val entryCooldownSeconds = intervalMinutes.toLong() * SECONDS_PER_MINUTE
         val entryCooldownUntil = now.plusSeconds(entryCooldownSeconds)
+        val usageBeforeGrant = usageRepository.dailyUsage.value
+        val cycleBeforeGrant = usageRepository.gateCycle.value
         val granted = taskGrantTransaction.grant(
             taskId = task.id,
             localDate = now.atZone(zoneId).toLocalDate(),
@@ -208,6 +283,62 @@ class MonitoringCoordinator(
             entryCooldownUntil = entryCooldownUntil,
         )
         if (granted) {
+            val solvedUsage = usageRepository.dailyUsage.value.let { current ->
+                current.copy(
+                    tasksSolved = maxOf(
+                        current.tasksSolved,
+                        usageBeforeGrant.tasksSolved.saturatingIncrement(),
+                    ),
+                    updatedAt = now,
+                )
+            }
+            usageRepository.saveDailyUsage(solvedUsage)
+            val currentCycle = usageRepository.gateCycle.value
+            val synchronizedCycle = when (task.target) {
+                TaskTarget.YOUTUBE_SHORTS -> currentCycle.copy(
+                    usedSeconds = 0,
+                    pendingTaskId = null,
+                    entryCooldownUntil = entryCooldownUntil,
+                    updatedAt = now,
+                )
+
+                TaskTarget.INSTAGRAM -> currentCycle.copy(
+                    instagramUsedSeconds = 0,
+                    pendingTaskId = null,
+                    instagramEntryCooldownUntil = entryCooldownUntil,
+                    updatedAt = now,
+                )
+            }.let { updated ->
+                if (updated.localDate == now.atZone(zoneId).toLocalDate()) {
+                    updated
+                } else {
+                    cycleBeforeGrant.forDate(now.atZone(zoneId).toLocalDate(), now).copy(
+                        usedSeconds = if (task.target == TaskTarget.YOUTUBE_SHORTS) {
+                            0
+                        } else {
+                            cycleBeforeGrant.usedSeconds
+                        },
+                        instagramUsedSeconds = if (task.target == TaskTarget.INSTAGRAM) {
+                            0
+                        } else {
+                            cycleBeforeGrant.instagramUsedSeconds
+                        },
+                        pendingTaskId = null,
+                        entryCooldownUntil = if (task.target == TaskTarget.YOUTUBE_SHORTS) {
+                            entryCooldownUntil
+                        } else {
+                            cycleBeforeGrant.entryCooldownUntil
+                        },
+                        instagramEntryCooldownUntil = if (task.target == TaskTarget.INSTAGRAM) {
+                            entryCooldownUntil
+                        } else {
+                            cycleBeforeGrant.instagramEntryCooldownUntil
+                        },
+                    )
+                }
+            }
+            usageRepository.saveGateCycle(synchronizedCycle)
+            taskRepository.clear(task.id)
             if (task.target == TaskTarget.YOUTUBE_SHORTS) {
                 entryGate.onTaskSolved(
                     elapsedMillis = SystemClock.elapsedRealtime(),
@@ -441,27 +572,53 @@ class MonitoringCoordinator(
             instagramRemainderMillis = 0
         }
 
-        val difficultyState = taskDifficultyPolicy.update(
-            state = TaskDifficultyState(
-                loadSeconds = cycle.difficultyLoadSeconds,
-                updatedAt = cycle.difficultyLoadUpdatedAt,
-                recoverySeconds = cycle.difficultyRecoverySeconds,
-            ),
-            now = now,
-            shortsActive = shortsActive,
-            config = difficultyConfig(),
-            observedActiveSeconds = observedShortsSeconds,
-        )
-        cycle = cycle.copy(
-            difficultyLoadSeconds = difficultyState.loadSeconds,
-            difficultyLoadUpdatedAt = difficultyState.updatedAt,
-            difficultyRecoverySeconds = difficultyState.recoverySeconds,
-            updatedAt = now,
-        )
+        if (observedShortsSeconds > 0) {
+            val difficultyState = taskDifficultyPolicy.update(
+                state = cycle.toDifficultyState(),
+                now = now,
+                shortsActive = true,
+                config = difficultyConfig(),
+                observedActiveSeconds = observedShortsSeconds,
+            )
+            cycle = cycle.withDifficultyState(difficultyState, now)
+        }
 
         if (usage != usageRepository.dailyUsage.value) usageRepository.saveDailyUsage(usage)
         if (cycle != usageRepository.gateCycle.value) usageRepository.saveGateCycle(cycle)
         evaluatePolicyLocked(usage, cycle, triggeringEvent = null)
+    }
+
+    private suspend fun handleDeviceState(state: DeviceState) = mutex.withLock {
+        if (state.foregroundPackage != latestDeviceState.foregroundPackage) {
+            lastTickElapsedMillis = SystemClock.elapsedRealtime()
+            youtubeRemainderMillis = 0
+            shortsRemainderMillis = 0
+            instagramRemainderMillis = 0
+        }
+        latestDeviceState = state
+        if (
+            state.foregroundPackage != AccessibilityAdapterController.YOUTUBE_PACKAGE_NAME
+        ) {
+            latestDetectionState = ShortsDetectionState.NOT_SHORTS
+            detector.resetToNotShorts(SystemClock.elapsedRealtime())
+            entryGate.onYouTubeForegroundLost()
+        }
+        evaluatePolicyLocked(
+            usage = usageRepository.dailyUsage.value,
+            cycle = usageRepository.gateCycle.value,
+            triggeringEvent = null,
+        )
+    }
+
+    private suspend fun awaitNextHeartbeat() {
+        val targetForeground = latestDeviceState.foregroundPackage in
+            AccessibilityAdapterController.TARGET_PACKAGE_NAMES
+        val waitMillis = if (targetForeground) {
+            ACTIVE_HEARTBEAT_MILLIS
+        } else {
+            IDLE_HEARTBEAT_MILLIS
+        }
+        withTimeoutOrNull(waitMillis) { heartbeatWake.receive() }
     }
 
     private suspend fun evaluatePolicy(
@@ -653,18 +810,21 @@ class MonitoringCoordinator(
         val activeTaskGate = mutableEnforcement.value as? EnforcementUiState.TaskGate
         if (existing == null && activeTaskGate != null) return activeTaskGate
         val now = wallClock.now()
+        val effectiveDifficultyState = taskDifficultyPolicy.update(
+            state = cycle.toDifficultyState(),
+            now = now,
+            shortsActive = false,
+            config = difficultyConfig(),
+        )
+        val cycleForTask = cycle.withDifficultyState(effectiveDifficultyState, now)
         val difficulty = taskDifficultyPolicy.difficulty(
-            state = TaskDifficultyState(
-                loadSeconds = cycle.difficultyLoadSeconds,
-                updatedAt = cycle.difficultyLoadUpdatedAt,
-                recoverySeconds = cycle.difficultyRecoverySeconds,
-            ),
+            state = effectiveDifficultyState,
             config = difficultyConfig(),
         )
         val task = existing ?: newTask(difficulty, requestedTrigger, target).also { created ->
             taskRepository.save(created)
             usageRepository.saveGateCycle(
-                cycle.copy(
+                cycleForTask.copy(
                     pendingTaskId = created.id,
                     updatedAt = now,
                 ),
@@ -676,9 +836,9 @@ class MonitoringCoordinator(
                 ),
             )
         }
-        if (cycle.pendingTaskId != task.id) {
+        if (cycleForTask.pendingTaskId != task.id) {
             usageRepository.saveGateCycle(
-                cycle.copy(pendingTaskId = task.id, updatedAt = wallClock.now()),
+                cycleForTask.copy(pendingTaskId = task.id, updatedAt = wallClock.now()),
             )
         }
         return task.toUi(grantMinutesFor(task.target))
@@ -797,17 +957,123 @@ class MonitoringCoordinator(
         }
     }
 
+    private fun GateCycle.toDifficultyState(): TaskDifficultyState = TaskDifficultyState(
+        loadSeconds = difficultyLoadSeconds,
+        updatedAt = difficultyLoadUpdatedAt,
+        recoverySeconds = difficultyRecoverySeconds,
+    )
+
+    private fun GateCycle.withDifficultyState(
+        state: TaskDifficultyState,
+        now: Instant,
+    ): GateCycle = copy(
+        difficultyLoadSeconds = state.loadSeconds,
+        difficultyLoadUpdatedAt = state.updatedAt,
+        difficultyRecoverySeconds = state.recoverySeconds,
+        updatedAt = now,
+    )
+
+    private suspend fun runRecoveringStream(
+        failureCode: String,
+        block: suspend () -> Unit,
+    ) {
+        while (currentCoroutineContext().isActive) {
+            try {
+                recordRuntimeRecovery(failureCode)
+                block()
+                if (currentCoroutineContext().isActive) {
+                    recordRuntimeFailure("${failureCode}_ENDED")
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                recordRuntimeFailure(failureCode, error)
+            }
+            delay(STREAM_RETRY_MILLIS)
+        }
+    }
+
+    private suspend fun runGuarded(
+        failureCode: String,
+        block: suspend () -> Unit,
+    ) {
+        try {
+            block()
+            recordRuntimeRecovery(failureCode)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Exception) {
+            recordRuntimeFailure(failureCode, error)
+        }
+    }
+
+    private fun markHeartbeatHealthy() {
+        recordRuntimeRecovery(FAILURE_TRANSIENT_INTERRUPT)
+        val health = synchronized(failureLock) {
+            if (activeFailureCodes.isEmpty()) {
+                MonitoringHealthStatus.RUNNING
+            } else {
+                MonitoringHealthStatus.RECOVERING
+            }
+        }
+        mutableDiagnostics.update {
+            it.copy(
+                healthStatus = health,
+                serviceConnected = true,
+                lastHeartbeatAt = wallClock.now(),
+            )
+        }
+    }
+
+    private fun recordRuntimeFailure(code: String, error: Exception? = null) {
+        synchronized(failureLock) { activeFailureCodes = activeFailureCodes + code }
+        if (error != null) Log.w(LOG_TAG, code, error)
+        mutableDiagnostics.update {
+            it.copy(
+                healthStatus = MonitoringHealthStatus.RECOVERING,
+                recoveryCount = it.recoveryCount.saturatingIncrement(),
+                lastFailureCode = code,
+            )
+        }
+    }
+
+    private fun recordRuntimeRecovery(code: String) {
+        val health = synchronized(failureLock) {
+            activeFailureCodes = activeFailureCodes - code
+            if (activeFailureCodes.isEmpty()) {
+                MonitoringHealthStatus.RUNNING
+            } else {
+                MonitoringHealthStatus.RECOVERING
+            }
+        }
+        mutableDiagnostics.update { diagnostics ->
+            if (!diagnostics.serviceConnected) {
+                diagnostics
+            } else {
+                diagnostics.copy(healthStatus = health)
+            }
+        }
+    }
+
     private fun Long.saturatingAdd(other: Long): Long =
         if (other > Long.MAX_VALUE - this) Long.MAX_VALUE else this + other
 
     private fun Int.saturatingIncrement(): Int = if (this == Int.MAX_VALUE) this else this + 1
 
     companion object {
-        private const val HEARTBEAT_MILLIS = 1_000L
+        private const val LOG_TAG = "NoScrollMonitoring"
+        private const val ACTIVE_HEARTBEAT_MILLIS = 1_000L
+        private const val IDLE_HEARTBEAT_MILLIS = 15_000L
         private const val RECONCILIATION_MILLIS = 60_000L
         private const val MILLIS_PER_SECOND = 1_000L
         private const val SECONDS_PER_MINUTE = 60L
         private const val WRONG_ATTEMPTS_FOR_REPLACEMENT = 3
         private const val SHORTS_EJECTION_THROTTLE_MILLIS = 2_000L
+        private const val STREAM_RETRY_MILLIS = 1_000L
+        private const val FAILURE_DEVICE_STATE_STREAM = "DEVICE_STATE_STREAM"
+        private const val FAILURE_EVENT_STREAM = "EVENT_STREAM"
+        private const val FAILURE_HEARTBEAT = "HEARTBEAT"
+        private const val FAILURE_RECONCILIATION = "RECONCILIATION"
+        private const val FAILURE_TRANSIENT_INTERRUPT = "TRANSIENT_INTERRUPT"
     }
 }

@@ -192,6 +192,51 @@ class RoomRepositoriesTest {
     }
 
     @Test
+    fun rapidUsageUpdatesAreImmediatelyVisibleAndNeverOverwriteEachOther() = runBlocking {
+        val date = LocalDate.of(2026, 7, 22)
+        val now = Instant.parse("2026-07-22T08:00:00Z")
+        val repository = RoomUsageRepository(
+            database.dailyUsageDao(),
+            database.gateCycleDao(),
+            scope,
+            dailyUsage(date, now),
+            gateCycle(date, now),
+        )
+        withTimeout(5_000) {
+            repository.dailyInitialized.filter { it }.first()
+            repository.gateInitialized.filter { it }.first()
+        }
+
+        repeat(100) { index ->
+            val seconds = (index + 1).toLong()
+            repository.saveDailyUsage(
+                repository.dailyUsage.value.copy(
+                    youtubeSeconds = seconds,
+                    updatedAt = now.plusSeconds(seconds),
+                ),
+            )
+            repository.saveGateCycle(
+                repository.gateCycle.value.copy(
+                    instagramUsedSeconds = seconds,
+                    updatedAt = now.plusSeconds(seconds),
+                ),
+            )
+            assertEquals(seconds, repository.dailyUsage.value.youtubeSeconds)
+            assertEquals(seconds, repository.gateCycle.value.instagramUsedSeconds)
+        }
+
+        assertEquals(
+            100L,
+            requireNotNull(database.dailyUsageDao().get(date.toString())).youtubeSeconds,
+        )
+        assertEquals(
+            100L,
+            requireNotNull(database.gateCycleDao().get(GateCycle.CURRENT_GATE_CYCLE_ID))
+                .instagramUsedSeconds,
+        )
+    }
+
+    @Test
     fun entryTaskGrantResetsIntervalAndPersistsCooldown() = runBlocking {
         val date = LocalDate.of(2026, 7, 14)
         val createdAt = Instant.parse("2026-07-14T05:00:00Z")

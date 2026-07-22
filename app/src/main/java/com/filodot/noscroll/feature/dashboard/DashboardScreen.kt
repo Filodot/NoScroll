@@ -242,8 +242,21 @@ private fun PriorityStateBanner(
                 iconLabel = "Ошибка доступа",
                 iconText = "!",
                 title = "Защита не работает",
-                body = "NoScrol не может распознавать Shorts или показывать паузу",
+                body = "NoScroll не может распознавать Shorts или показывать паузу",
                 actionLabel = "Включить Accessibility",
+                onAction = { onAction(DashboardAction.OpenAccessibilitySettings) },
+            )
+        }
+
+        !state.monitoringHealthy -> {
+            Spacer(Modifier.height(16.dp))
+            PriorityBanner(
+                kind = BannerKind.ERROR,
+                iconLabel = "Ошибка мониторинга",
+                iconText = "!",
+                title = "Служба остановилась",
+                body = "Откройте системные настройки, выключите и снова включите NoScroll",
+                actionLabel = "Перезапустить службу",
                 onAction = { onAction(DashboardAction.OpenAccessibilitySettings) },
             )
         }
@@ -287,7 +300,7 @@ private fun ShortsCard(
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "Откройте задание в NoScrol и осознанно разблокируйте " +
+                        text = "Откройте задание в NoScroll и осознанно разблокируйте " +
                             "следующие ${wholeMinutes(shorts.intervalSeconds)} минут",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyLarge,

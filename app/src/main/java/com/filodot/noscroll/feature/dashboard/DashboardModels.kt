@@ -45,6 +45,7 @@ data class EmergencyUiState(
 data class DashboardUiState(
     val dateLabel: String,
     val accessibilityEnabled: Boolean = true,
+    val monitoringHealthy: Boolean = true,
     val shorts: ShortsLimitUiState = ShortsLimitUiState.Enabled(
         cycleUsedSeconds = 78,
         intervalSeconds = 300,
@@ -64,7 +65,8 @@ data class DashboardUiState(
     val protectionStatus: DashboardProtectionStatus
         get() = when {
             emergency.active -> DashboardProtectionStatus.EMERGENCY_BYPASS
-            !accessibilityEnabled -> DashboardProtectionStatus.ACCESSIBILITY_ERROR
+            !accessibilityEnabled || !monitoringHealthy ->
+                DashboardProtectionStatus.ACCESSIBILITY_ERROR
             else -> DashboardProtectionStatus.WORKING
         }
 
@@ -74,7 +76,8 @@ data class DashboardUiState(
             daily !is DailyLimitUiState.Disabled
 
     val hasUsageAccessProblem: Boolean
-        get() = accessibilityEnabled && daily is DailyLimitUiState.Unavailable
+        get() = accessibilityEnabled && monitoringHealthy &&
+            daily is DailyLimitUiState.Unavailable
 }
 
 enum class DashboardProtectionStatus {

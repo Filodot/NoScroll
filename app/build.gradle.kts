@@ -14,8 +14,8 @@ android {
         applicationId = "com.filodot.noscroll"
         minSdk = 26
         targetSdk = 37
-        versionCode = 8
-        versionName = "0.6.0"
+        versionCode = 9
+        versionName = "0.7.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -23,6 +23,9 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            // Keep upgrades compatible with the 0.6.x APKs already distributed from this repo.
+            // Play/App Store publication must replace this with a protected production key.
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
