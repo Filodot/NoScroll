@@ -58,7 +58,7 @@
 - deterministic validation;
 - critic/repair/regenerate/provider failover;
 - карантин;
-- предварительный кэш трёх–пяти уроков.
+- локальный кэш валидированных уроков без расхода квоты в фоне.
 
 ## EDU-08 — Progress and repetition
 

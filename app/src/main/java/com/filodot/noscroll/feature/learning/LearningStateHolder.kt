@@ -10,6 +10,8 @@ import com.filodot.noscroll.core.learning.ai.AiProviderSettings
 import com.filodot.noscroll.core.learning.content.StaticLearningCatalog
 import com.filodot.noscroll.core.learning.generation.CurriculumGenerationException
 import com.filodot.noscroll.core.learning.generation.CurriculumGenerator
+import com.filodot.noscroll.core.learning.generation.LessonGenerationException
+import com.filodot.noscroll.core.learning.generation.LessonGenerator
 import com.filodot.noscroll.core.learning.importing.LearningMaterialGateway
 import com.filodot.noscroll.core.learning.importing.LearningMaterialImportException
 import com.filodot.noscroll.core.learning.importing.LearningMaterialProcessor
@@ -92,6 +94,7 @@ data class LearningUiState(
     val generatingPlan: Boolean = false,
     val planDirty: Boolean = false,
     val lastPlanProviderLabel: String? = null,
+    val generatingLesson: Boolean = false,
     val selectedCourse: LearningCourseContent? = null,
     val selectedCourseMasteryPercent: Int = 0,
     val readyLessons: Int = 0,
@@ -99,6 +102,7 @@ data class LearningUiState(
     val activityIndex: Int = 0,
     val selectedOptionIds: Set<String> = emptySet(),
     val orderedItemIds: List<String> = emptyList(),
+    val matchingRightIdByLeftId: Map<String, String> = emptyMap(),
     val textAnswer: String = "",
     val booleanAnswer: Boolean? = null,
     val answerStatus: LearningAnswerStatus = LearningAnswerStatus.UNCHECKED,
@@ -132,6 +136,7 @@ sealed interface LearningAction {
     data class DeletePlanNode(val nodeId: String) : LearningAction
     data object AddPlanNode : LearningAction
     data object ConfirmPlan : LearningAction
+    data object GenerateNextLesson : LearningAction
     data object CreateDemoCourse : LearningAction
     data class OpenCourse(val courseId: String) : LearningAction
     data object BackToCourses : LearningAction
@@ -139,6 +144,7 @@ sealed interface LearningAction {
     data object BackToCourse : LearningAction
     data class SelectOption(val optionId: String, val multiple: Boolean) : LearningAction
     data class MoveOrderedItem(val itemId: String, val direction: Int) : LearningAction
+    data class SetMatch(val leftId: String, val rightId: String) : LearningAction
     data class SetTextAnswer(val value: String) : LearningAction
     data class SetBooleanAnswer(val value: Boolean) : LearningAction
     data object CheckAnswer : LearningAction
@@ -153,6 +159,7 @@ class LearningStateHolder(
     private val materialGateway: LearningMaterialGateway? = null,
     private val aiCredentials: AiCredentialRepository? = null,
     private val curriculumGenerator: CurriculumGenerator? = null,
+    private val lessonGenerator: LessonGenerator? = null,
     private val materialProcessor: LearningMaterialProcessor = LearningMaterialProcessor(),
     private val answerChecker: LocalLearningAnswerChecker = LocalLearningAnswerChecker(),
     private val masteryPolicy: MasteryPolicy = MasteryPolicy(),
@@ -289,6 +296,7 @@ class LearningStateHolder(
             is LearningAction.DeletePlanNode -> scope.launch { deletePlanNode(action.nodeId) }
             LearningAction.AddPlanNode -> scope.launch { addPlanNode() }
             LearningAction.ConfirmPlan -> scope.launch { confirmPlan() }
+            LearningAction.GenerateNextLesson -> scope.launch { generateNextLesson() }
             LearningAction.CreateDemoCourse -> scope.launch { createDemoCourse() }
             is LearningAction.OpenCourse -> scope.launch { openCourse(action.courseId) }
             LearningAction.BackToCourses -> mutableState.update {
@@ -309,6 +317,13 @@ class LearningStateHolder(
 
             is LearningAction.SelectOption -> selectOption(action)
             is LearningAction.MoveOrderedItem -> moveOrderedItem(action)
+            is LearningAction.SetMatch -> mutableState.update {
+                it.copy(
+                    matchingRightIdByLeftId =
+                        it.matchingRightIdByLeftId + (action.leftId to action.rightId),
+                    answerStatus = LearningAnswerStatus.UNCHECKED,
+                )
+            }
             is LearningAction.SetTextAnswer -> mutableState.update {
                 it.copy(
                     textAnswer = action.value.take(MAX_TEXT_ANSWER_LENGTH),
@@ -556,6 +571,61 @@ class LearningStateHolder(
         openCourse(updated.course.id)
         mutableState.update {
             it.copy(planDirty = false, message = "План подтверждён и готов к созданию уроков")
+        }
+    }
+
+    private suspend fun generateNextLesson() {
+        val generator = lessonGenerator
+        val content = mutableState.value.selectedCourse
+        if (generator == null || content == null) {
+            mutableState.update { it.copy(message = "Генератор уроков пока недоступен") }
+            return
+        }
+        if (content.course.status != CourseStatus.READY) {
+            mutableState.update { it.copy(message = "Сначала подтвердите план курса") }
+            return
+        }
+        if (mutableState.value.readyLessons > 0) {
+            mutableState.update { it.copy(message = "Следующий урок уже готов офлайн") }
+            return
+        }
+        if (mutableState.value.generatingLesson) return
+        if (mutableState.value.aiProviders.none { it.enabled && it.hasApiKey }) {
+            mutableState.update { it.copy(message = "Добавьте API-ключ AI-провайдера") }
+            return
+        }
+        mutableState.update { it.copy(generatingLesson = true, message = null) }
+        try {
+            val lesson = generator.generate(content, repository.getMastery(content.course.id))
+            repository.saveLesson(lesson)
+            openCourse(content.course.id)
+            val generation = lesson.activities.firstOrNull()?.generation
+            mutableState.update {
+                it.copy(
+                    generatingLesson = false,
+                    message = if (generation == null) {
+                        "Следующий урок готов офлайн"
+                    } else {
+                        "Урок готов: ${generation.providerId} · ${generation.modelId}"
+                    },
+                )
+            }
+        } catch (error: LessonGenerationException) {
+            mutableState.update {
+                it.copy(
+                    generatingLesson = false,
+                    message = error.issues.firstOrNull()
+                        ?: error.message
+                        ?: "Не удалось создать качественный урок",
+                )
+            }
+        } catch (error: Exception) {
+            mutableState.update {
+                it.copy(
+                    generatingLesson = false,
+                    message = error.message?.take(400) ?: "Не удалось создать урок",
+                )
+            }
         }
     }
 
@@ -895,7 +965,12 @@ class LearningStateHolder(
             .takeIf { it.size == content.items.size }
             ?.let { LearningAnswer.Ordered(it) }
 
-        is MatchingContent -> null
+        is MatchingContent -> matchingRightIdByLeftId
+            .takeIf { matches ->
+                matches.keys == content.left.mapTo(mutableSetOf()) { it.id } &&
+                    matches.values.all { rightId -> content.right.any { it.id == rightId } }
+            }
+            ?.let { LearningAnswer.Matches(it) }
         is FillBlankContent,
         is com.filodot.noscroll.core.learning.model.ShortAnswerContent,
         is com.filodot.noscroll.core.learning.model.NumericAnswerContent,
@@ -916,6 +991,7 @@ class LearningStateHolder(
     ): LearningUiState = state.copy(
         selectedOptionIds = emptySet(),
         orderedItemIds = (activity?.content as? OrderingContent)?.items?.map { it.id }.orEmpty(),
+        matchingRightIdByLeftId = emptyMap(),
         textAnswer = "",
         booleanAnswer = null,
         answerStatus = LearningAnswerStatus.UNCHECKED,

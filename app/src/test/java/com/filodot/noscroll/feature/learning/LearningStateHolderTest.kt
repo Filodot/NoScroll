@@ -4,6 +4,7 @@ import com.filodot.noscroll.core.learning.content.StaticLearningCatalog
 import com.filodot.noscroll.core.learning.ai.AiProviderId
 import com.filodot.noscroll.core.learning.generation.CurriculumGenerator
 import com.filodot.noscroll.core.learning.generation.GeneratedCurriculum
+import com.filodot.noscroll.core.learning.generation.LessonGenerator
 import com.filodot.noscroll.core.learning.importing.LearningMaterialDocument
 import com.filodot.noscroll.core.learning.importing.LearningMaterialGateway
 import com.filodot.noscroll.core.learning.importing.MaterialSection
@@ -204,6 +205,48 @@ class LearningStateHolderTest {
         assertEquals("Введение в SQL", confirmed.curriculumNodes.first().title)
     }
 
+    @Test
+    fun `validated generated lesson is saved and becomes ready offline`() = runTest {
+        val readyContent = LearningCourseContent(
+            course = StaticLearningCatalog.pythonCourse.copy(status = CourseStatus.READY),
+            sources = emptyList(),
+            curriculumNodes = listOf(StaticLearningCatalog.firstTopic),
+            concepts = listOf(
+                StaticLearningCatalog.variablesConcept,
+                StaticLearningCatalog.expressionsConcept,
+            ),
+        )
+        val repository = InMemoryLearningRepository(initialContent = listOf(readyContent))
+        val credentials = InMemoryAiCredentialRepository(
+            initialKeys = mapOf(AiProviderId.GEMINI to "test-secret"),
+        )
+        val generator = LessonGenerator { content, mastery ->
+            assertEquals(readyContent.course.id, content.course.id)
+            assertTrue(mastery.isEmpty())
+            StaticLearningCatalog.firstLesson.copy(
+                courseId = content.course.id,
+                planVersion = content.course.planVersion,
+            )
+        }
+        val holder = holder(
+            repository = repository,
+            aiCredentials = credentials,
+            lessonGenerator = generator,
+        )
+        runCurrent()
+
+        holder.dispatch(LearningAction.OpenCourse(readyContent.course.id))
+        runCurrent()
+        holder.dispatch(LearningAction.GenerateNextLesson)
+        runCurrent()
+
+        assertEquals(1, holder.state.value.readyLessons)
+        assertEquals(
+            StaticLearningCatalog.firstLesson.id,
+            repository.peekNextLesson(readyContent.course.id)?.id,
+        )
+    }
+
     private suspend fun kotlinx.coroutines.test.TestScope.openFirstLesson(
         holder: LearningStateHolder,
     ) {
@@ -218,12 +261,14 @@ class LearningStateHolderTest {
         materialGateway: LearningMaterialGateway? = null,
         aiCredentials: InMemoryAiCredentialRepository? = null,
         curriculumGenerator: CurriculumGenerator? = null,
+        lessonGenerator: LessonGenerator? = null,
     ) = LearningStateHolder(
         repository = repository,
         scope = backgroundScope,
         materialGateway = materialGateway,
         aiCredentials = aiCredentials,
         curriculumGenerator = curriculumGenerator,
+        lessonGenerator = lessonGenerator,
         now = { now },
         zoneId = ZoneId.of("UTC"),
         idGenerator = { "attempt-${repository.hashCode()}-${holderIds++}" },

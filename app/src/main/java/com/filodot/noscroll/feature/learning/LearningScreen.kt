@@ -46,6 +46,7 @@ import com.filodot.noscroll.core.learning.ai.AiCredentialRepository
 import com.filodot.noscroll.core.learning.ai.AiGateway
 import com.filodot.noscroll.core.learning.ai.AiProviderId
 import com.filodot.noscroll.core.learning.generation.AiCurriculumGenerator
+import com.filodot.noscroll.core.learning.generation.AiLessonGenerator
 import com.filodot.noscroll.data.learning.AndroidLearningMaterialGateway
 import com.filodot.noscroll.core.learning.model.CodeCompletionContent
 import com.filodot.noscroll.core.learning.model.CodeFixContent
@@ -77,13 +78,22 @@ fun LearningRoute(
     val context = LocalContext.current
     val materialGateway = remember(context) { AndroidLearningMaterialGateway(context) }
     val curriculumGenerator = remember(aiGateway) { aiGateway?.let(::AiCurriculumGenerator) }
-    val holder = remember(repository, scope, materialGateway, aiCredentials, curriculumGenerator) {
+    val lessonGenerator = remember(aiGateway) { aiGateway?.let(::AiLessonGenerator) }
+    val holder = remember(
+        repository,
+        scope,
+        materialGateway,
+        aiCredentials,
+        curriculumGenerator,
+        lessonGenerator,
+    ) {
         LearningStateHolder(
             repository = repository,
             scope = scope,
             materialGateway = materialGateway,
             aiCredentials = aiCredentials,
             curriculumGenerator = curriculumGenerator,
+            lessonGenerator = lessonGenerator,
         )
     }
     val state by holder.state.collectAsStateWithLifecycle()
@@ -450,12 +460,30 @@ private fun CoursePane(
             )
             Text("${state.selectedCourseMasteryPercent}% усвоено")
             Text("Готово офлайн: ${state.readyLessons}")
-            Button(
-                onClick = { onAction(LearningAction.StartLesson) },
-                enabled = state.readyLessons > 0,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-            ) {
-                Text(if (state.readyLessons > 0) "Начать следующий урок" else "Нет готовых уроков")
+            if (state.readyLessons > 0) {
+                Button(
+                    onClick = { onAction(LearningAction.StartLesson) },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                ) {
+                    Text("Начать следующий урок")
+                }
+            } else if (content.course.status == CourseStatus.READY) {
+                if (state.generatingLesson) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    Text("Создаём, перепроверяем и сохраняем урок для офлайн-доступа…")
+                } else {
+                    Button(
+                        onClick = { onAction(LearningAction.GenerateNextLesson) },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    ) {
+                        Text("Подготовить следующий урок")
+                    }
+                }
+            } else {
+                Text(
+                    "Сначала создайте и подтвердите план курса.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
@@ -767,10 +795,35 @@ private fun ActivityInput(
             }
         }
 
-        is MatchingContent -> Text(
-            "Интерактивное сопоставление пар подключается в следующей версии UI.",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        is MatchingContent -> MatchingInput(state, content, onAction)
+    }
+}
+
+@Composable
+private fun MatchingInput(
+    state: LearningUiState,
+    content: MatchingContent,
+    onAction: (LearningAction) -> Unit,
+) {
+    content.left.forEach { left ->
+        Text(left.text, style = MaterialTheme.typography.titleMedium)
+        content.right.forEach { right ->
+            val selected = state.matchingRightIdByLeftId[left.id] == right.id
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .selectable(
+                        selected = selected,
+                        role = Role.RadioButton,
+                        onClick = { onAction(LearningAction.SetMatch(left.id, right.id)) },
+                    )
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RadioButton(selected = selected, onClick = null)
+                Text(right.text, modifier = Modifier.padding(start = 10.dp))
+            }
+        }
     }
 }
 
@@ -940,7 +993,8 @@ private fun hasAnswer(
     is TrueFalseContent -> state.booleanAnswer != null
     is OrderingContent -> state.orderedItemIds.size == content.items.size
     is FlashcardContent -> true
-    is MatchingContent -> false
+    is MatchingContent ->
+        state.matchingRightIdByLeftId.keys == content.left.mapTo(mutableSetOf()) { it.id }
     is FillBlankContent,
     is ShortAnswerContent,
     is NumericAnswerContent,
