@@ -56,7 +56,7 @@ import com.filodot.noscroll.feature.history.EmergencyHistoryEffect
 import com.filodot.noscroll.feature.history.EmergencyHistoryItemUi
 import com.filodot.noscroll.feature.history.EmergencyHistoryRoute
 import com.filodot.noscroll.feature.history.EmergencyHistoryStateHolder
-import com.filodot.noscroll.feature.learning.LearningScreen
+import com.filodot.noscroll.feature.learning.LearningRoute
 import com.filodot.noscroll.feature.limits.LimitsEffect
 import com.filodot.noscroll.feature.limits.LimitsRoute
 import com.filodot.noscroll.feature.limits.LimitsStateHolder
@@ -541,7 +541,7 @@ fun NoScrollApp(
             }
             composable(AppRoute.Learning.path) {
                 MainDestinationScaffold(navController, AppRoute.Learning) {
-                    LearningScreen()
+                    LearningRoute(appGraph.learningRepository)
                 }
             }
             composable(AppRoute.Settings.path) {
