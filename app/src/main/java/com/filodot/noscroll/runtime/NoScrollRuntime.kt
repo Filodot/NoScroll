@@ -11,6 +11,7 @@ import com.filodot.noscroll.data.local.repository.RoomTaskRepository
 import com.filodot.noscroll.data.local.repository.RoomTaskPresetRepository
 import com.filodot.noscroll.data.local.repository.RoomUsageRepository
 import com.filodot.noscroll.data.local.room.NoScrollDatabase
+import com.filodot.noscroll.data.local.security.SecureAiCredentialRepository
 import com.filodot.noscroll.feature.dashboard.DashboardUiState
 import com.filodot.noscroll.feature.history.EmergencyHistoryUiState
 import com.filodot.noscroll.feature.settings.DetectorUiStatus
@@ -57,6 +58,7 @@ class NoScrollRuntime private constructor(application: Application) {
         applicationScope,
     )
     val learningRepository = RoomLearningRepository(database.learningDao())
+    val aiCredentialRepository = SecureAiCredentialRepository(application)
     val systemAccess = AndroidSystemAccess(application)
     private val repositoriesReady = combine(
         listOf(
@@ -88,6 +90,7 @@ class NoScrollRuntime private constructor(application: Application) {
         taskPresetRepository = taskPresetRepository,
         emergencyRepository = emergencyRepository,
         learningRepository = learningRepository,
+        aiCredentialRepository = aiCredentialRepository,
         dashboardState = DashboardUiState(dateLabel = "Сегодня"),
         settingsState = SettingsUiState(
             accessibilityStatus = SystemAccessUiStatus.NOT_ENABLED,

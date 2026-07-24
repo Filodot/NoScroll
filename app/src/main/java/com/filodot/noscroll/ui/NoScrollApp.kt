@@ -541,7 +541,10 @@ fun NoScrollApp(
             }
             composable(AppRoute.Learning.path) {
                 MainDestinationScaffold(navController, AppRoute.Learning) {
-                    LearningRoute(appGraph.learningRepository)
+                    LearningRoute(
+                        repository = appGraph.learningRepository,
+                        aiCredentials = appGraph.aiCredentialRepository,
+                    )
                 }
             }
             composable(AppRoute.Settings.path) {

@@ -1,5 +1,8 @@
 package com.filodot.noscroll.core.testing
 
+import com.filodot.noscroll.core.learning.ai.AiCredentialRepository
+import com.filodot.noscroll.core.learning.ai.AiProviderId
+import com.filodot.noscroll.core.learning.ai.AiProviderSettings
 import com.filodot.noscroll.core.contracts.EmergencyRepository
 import com.filodot.noscroll.core.contracts.SettingsRepository
 import com.filodot.noscroll.core.contracts.LearningRepository
@@ -171,6 +174,58 @@ class InMemoryLearningRepository(
 
     private fun publishLessons() {
         mutableLessons.value = lessonsById.values.toList()
+    }
+}
+
+class InMemoryAiCredentialRepository(
+    initialSettings: List<AiProviderSettings> = AiProviderId.entries.mapIndexed { index, id ->
+        AiProviderSettings(
+            id = id,
+            enabled = true,
+            priority = index,
+            modelId = when (id) {
+                AiProviderId.GEMINI -> "gemini-3.6-flash"
+                AiProviderId.GROQ -> "openai/gpt-oss-20b"
+                AiProviderId.OPENROUTER -> "openrouter/free"
+            },
+            hasApiKey = false,
+        )
+    },
+    initialKeys: Map<AiProviderId, String> = emptyMap(),
+) : AiCredentialRepository {
+    private val keys = initialKeys.toMutableMap()
+    private val mutableSettings = MutableStateFlow(
+        initialSettings.map { it.copy(hasApiKey = initialKeys.containsKey(it.id)) },
+    )
+    override val settings: StateFlow<List<AiProviderSettings>> = mutableSettings
+
+    override suspend fun saveApiKey(providerId: AiProviderId, apiKey: String) {
+        keys[providerId] = apiKey.trim()
+        update(providerId) { it.copy(hasApiKey = true) }
+    }
+
+    override suspend fun clearApiKey(providerId: AiProviderId) {
+        keys.remove(providerId)
+        update(providerId) { it.copy(hasApiKey = false) }
+    }
+
+    override suspend fun setEnabled(providerId: AiProviderId, enabled: Boolean) {
+        update(providerId) { it.copy(enabled = enabled) }
+    }
+
+    override suspend fun setModel(providerId: AiProviderId, modelId: String) {
+        update(providerId) { it.copy(modelId = modelId.trim()) }
+    }
+
+    override suspend fun getApiKey(providerId: AiProviderId): String? = keys[providerId]
+
+    private fun update(
+        providerId: AiProviderId,
+        transform: (AiProviderSettings) -> AiProviderSettings,
+    ) {
+        mutableSettings.value = mutableSettings.value.map {
+            if (it.id == providerId) transform(it) else it
+        }
     }
 }
 

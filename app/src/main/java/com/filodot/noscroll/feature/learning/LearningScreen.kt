@@ -24,6 +24,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -37,9 +38,12 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.filodot.noscroll.core.contracts.LearningRepository
+import com.filodot.noscroll.core.learning.ai.AiCredentialRepository
+import com.filodot.noscroll.core.learning.ai.AiProviderId
 import com.filodot.noscroll.data.learning.AndroidLearningMaterialGateway
 import com.filodot.noscroll.core.learning.model.CodeCompletionContent
 import com.filodot.noscroll.core.learning.model.CodeFixContent
@@ -62,6 +66,7 @@ import com.filodot.noscroll.core.learning.model.TrueFalseContent
 @Composable
 fun LearningRoute(
     repository: LearningRepository,
+    aiCredentials: AiCredentialRepository,
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
@@ -72,6 +77,7 @@ fun LearningRoute(
             repository = repository,
             scope = scope,
             materialGateway = materialGateway,
+            aiCredentials = aiCredentials,
         )
     }
     val state by holder.state.collectAsStateWithLifecycle()
@@ -97,6 +103,7 @@ fun LearningScreen(
             when (state.pane) {
                 LearningPane.COURSES -> CoursesPane(state, onAction)
                 LearningPane.CREATE -> CreateCoursePane(state, onAction)
+                LearningPane.AI_SETTINGS -> AiSettingsPane(state, onAction)
                 LearningPane.COURSE -> CoursePane(state, onAction)
                 LearningPane.LESSON -> LessonPane(state, onAction)
                 LearningPane.COMPLETED -> CompletedPane(state, onAction)
@@ -217,6 +224,13 @@ private fun CreateCoursePane(
         "Укажите тему или загрузите материал. План можно будет проверить и изменить до начала.",
         style = MaterialTheme.typography.bodyLarge,
     )
+    OutlinedButton(
+        onClick = { onAction(LearningAction.OpenAiSettings) },
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+    ) {
+        val ready = state.aiProviders.count { it.enabled && it.hasApiKey }
+        Text("Настроить ИИ · готово: $ready из 3")
+    }
     OutlinedTextField(
         value = state.createTitle,
         onValueChange = { onAction(LearningAction.SetCreateTitle(it)) },
@@ -281,6 +295,121 @@ private fun CreateCoursePane(
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 ) {
                     Text("Выбрать файл")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiSettingsPane(
+    state: LearningUiState,
+    onAction: (LearningAction) -> Unit,
+) {
+    TextButton(onClick = { onAction(LearningAction.CloseAiSettings) }) {
+        Text("← Новый курс")
+    }
+    Heading("Провайдеры ИИ")
+    Text(
+        "Для отказоустойчивости NoScroll пробует включённые сервисы по порядку. " +
+            "Достаточно одного ключа, лучше настроить все три.",
+        style = MaterialTheme.typography.bodyLarge,
+    )
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+        ),
+    ) {
+        Text(
+            "Ключи шифруются Android Keystore, не попадают в резервные копии и никогда " +
+                "не отправляются другому провайдеру.",
+            modifier = Modifier.padding(16.dp),
+        )
+    }
+    state.aiProviders.sortedBy { it.priority }.forEach { provider ->
+        val editing = state.editingAiProvider == provider.id
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(provider.id.displayName(), style = MaterialTheme.typography.titleLarge)
+                        Text(
+                            if (provider.hasApiKey) "Ключ сохранён" else "Нужен API-ключ",
+                            color = if (provider.hasApiKey) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.error
+                            },
+                        )
+                    }
+                    Switch(
+                        checked = provider.enabled,
+                        onCheckedChange = {
+                            onAction(LearningAction.ToggleAiProvider(provider.id, it))
+                        },
+                    )
+                }
+                Text(
+                    providerHelp(provider.id),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (editing) {
+                    OutlinedTextField(
+                        value = state.aiModelDraft,
+                        onValueChange = { onAction(LearningAction.SetAiModelDraft(it)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Модель") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = state.aiApiKeyDraft,
+                        onValueChange = { onAction(LearningAction.SetAiApiKeyDraft(it)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = {
+                            Text(
+                                if (provider.hasApiKey) {
+                                    "Новый ключ (оставьте пустым, чтобы не менять)"
+                                } else {
+                                    "API-ключ"
+                                },
+                            )
+                        },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                    )
+                    Button(
+                        onClick = { onAction(LearningAction.SaveAiProvider) },
+                        enabled = state.aiModelDraft.isNotBlank() &&
+                            (provider.hasApiKey || state.aiApiKeyDraft.length >= 8),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    ) {
+                        Text("Сохранить")
+                    }
+                    if (provider.hasApiKey) {
+                        TextButton(
+                            onClick = {
+                                onAction(LearningAction.ClearAiProviderKey(provider.id))
+                            },
+                        ) {
+                            Text("Удалить сохранённый ключ")
+                        }
+                    }
+                } else {
+                    Text("Модель: ${provider.modelId}")
+                    OutlinedButton(
+                        onClick = { onAction(LearningAction.EditAiProvider(provider.id)) },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    ) {
+                        Text(if (provider.hasApiKey) "Изменить" else "Добавить ключ")
+                    }
                 }
             }
         }
@@ -707,4 +836,10 @@ private fun hasAnswer(
     is MiniCodeContent,
     is TeachBackContent,
     -> state.textAnswer.isNotBlank()
+}
+
+private fun providerHelp(providerId: AiProviderId): String = when (providerId) {
+    AiProviderId.GEMINI -> "Основной: бесплатный tier Google AI Studio · aistudio.google.com"
+    AiProviderId.GROQ -> "Резерв №1: быстрый free plan · console.groq.com"
+    AiProviderId.OPENROUTER -> "Резерв №2: бесплатные модели, обычно 50 запросов/день · openrouter.ai"
 }

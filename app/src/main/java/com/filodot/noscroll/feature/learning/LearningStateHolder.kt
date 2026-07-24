@@ -4,6 +4,9 @@ import com.filodot.noscroll.core.contracts.LearningRepository
 import com.filodot.noscroll.core.learning.answer.AnswerEvaluation
 import com.filodot.noscroll.core.learning.answer.LearningAnswer
 import com.filodot.noscroll.core.learning.answer.LocalLearningAnswerChecker
+import com.filodot.noscroll.core.learning.ai.AiCredentialRepository
+import com.filodot.noscroll.core.learning.ai.AiProviderId
+import com.filodot.noscroll.core.learning.ai.AiProviderSettings
 import com.filodot.noscroll.core.learning.content.StaticLearningCatalog
 import com.filodot.noscroll.core.learning.importing.LearningMaterialGateway
 import com.filodot.noscroll.core.learning.importing.LearningMaterialImportException
@@ -46,6 +49,7 @@ import kotlinx.coroutines.launch
 enum class LearningPane {
     COURSES,
     CREATE,
+    AI_SETTINGS,
     COURSE,
     LESSON,
     COMPLETED,
@@ -74,6 +78,10 @@ data class LearningUiState(
     val createTitle: String = "",
     val createTopic: String = "",
     val importingMaterial: Boolean = false,
+    val aiProviders: List<AiProviderSettings> = emptyList(),
+    val editingAiProvider: AiProviderId? = null,
+    val aiApiKeyDraft: String = "",
+    val aiModelDraft: String = "",
     val selectedCourse: LearningCourseContent? = null,
     val selectedCourseMasteryPercent: Int = 0,
     val readyLessons: Int = 0,
@@ -98,6 +106,14 @@ sealed interface LearningAction {
     data class SetCreateTopic(val value: String) : LearningAction
     data object CreateTopicCourse : LearningAction
     data class ImportMaterial(val reference: String) : LearningAction
+    data object OpenAiSettings : LearningAction
+    data object CloseAiSettings : LearningAction
+    data class EditAiProvider(val providerId: AiProviderId) : LearningAction
+    data class SetAiApiKeyDraft(val value: String) : LearningAction
+    data class SetAiModelDraft(val value: String) : LearningAction
+    data object SaveAiProvider : LearningAction
+    data class ClearAiProviderKey(val providerId: AiProviderId) : LearningAction
+    data class ToggleAiProvider(val providerId: AiProviderId, val enabled: Boolean) : LearningAction
     data object CreateDemoCourse : LearningAction
     data class OpenCourse(val courseId: String) : LearningAction
     data object BackToCourses : LearningAction
@@ -117,6 +133,7 @@ class LearningStateHolder(
     private val repository: LearningRepository,
     private val scope: CoroutineScope,
     private val materialGateway: LearningMaterialGateway? = null,
+    private val aiCredentials: AiCredentialRepository? = null,
     private val materialProcessor: LearningMaterialProcessor = LearningMaterialProcessor(),
     private val answerChecker: LocalLearningAnswerChecker = LocalLearningAnswerChecker(),
     private val masteryPolicy: MasteryPolicy = MasteryPolicy(),
@@ -144,6 +161,13 @@ class LearningStateHolder(
                             current.pane
                         },
                     )
+                }
+            }
+        }
+        aiCredentials?.let { credentials ->
+            scope.launch {
+                credentials.settings.collectLatest { providers ->
+                    mutableState.update { it.copy(aiProviders = providers) }
                 }
             }
         }
@@ -179,6 +203,51 @@ class LearningStateHolder(
 
             LearningAction.CreateTopicCourse -> scope.launch { createTopicCourse() }
             is LearningAction.ImportMaterial -> scope.launch { importMaterial(action.reference) }
+            LearningAction.OpenAiSettings -> mutableState.update {
+                it.copy(
+                    pane = LearningPane.AI_SETTINGS,
+                    editingAiProvider = null,
+                    aiApiKeyDraft = "",
+                    aiModelDraft = "",
+                    message = null,
+                )
+            }
+
+            LearningAction.CloseAiSettings -> mutableState.update {
+                it.copy(
+                    pane = LearningPane.CREATE,
+                    editingAiProvider = null,
+                    aiApiKeyDraft = "",
+                    aiModelDraft = "",
+                    message = null,
+                )
+            }
+
+            is LearningAction.EditAiProvider -> editAiProvider(action.providerId)
+            is LearningAction.SetAiApiKeyDraft -> mutableState.update {
+                it.copy(aiApiKeyDraft = action.value.take(MAX_API_KEY_LENGTH))
+            }
+
+            is LearningAction.SetAiModelDraft -> mutableState.update {
+                it.copy(aiModelDraft = action.value.take(MAX_MODEL_ID_LENGTH))
+            }
+
+            LearningAction.SaveAiProvider -> scope.launch { saveAiProvider() }
+            is LearningAction.ClearAiProviderKey -> scope.launch {
+                aiCredentials?.clearApiKey(action.providerId)
+                mutableState.update {
+                    it.copy(
+                        editingAiProvider = null,
+                        aiApiKeyDraft = "",
+                        message = "API-ключ удалён",
+                    )
+                }
+            }
+
+            is LearningAction.ToggleAiProvider -> scope.launch {
+                aiCredentials?.setEnabled(action.providerId, action.enabled)
+            }
+
             LearningAction.CreateDemoCourse -> scope.launch { createDemoCourse() }
             is LearningAction.OpenCourse -> scope.launch { openCourse(action.courseId) }
             LearningAction.BackToCourses -> mutableState.update {
@@ -215,6 +284,42 @@ class LearningStateHolder(
             LearningAction.ContinueLesson -> scope.launch { continueLesson() }
             LearningAction.ReplaceSuspicious -> scope.launch { replaceSuspicious() }
             LearningAction.DismissMessage -> mutableState.update { it.copy(message = null) }
+        }
+    }
+
+    private fun editAiProvider(providerId: AiProviderId) {
+        val settings = mutableState.value.aiProviders.firstOrNull { it.id == providerId } ?: return
+        mutableState.update {
+            it.copy(
+                editingAiProvider = providerId,
+                aiApiKeyDraft = "",
+                aiModelDraft = settings.modelId,
+                message = null,
+            )
+        }
+    }
+
+    private suspend fun saveAiProvider() {
+        val credentials = aiCredentials ?: return
+        val state = mutableState.value
+        val providerId = state.editingAiProvider ?: return
+        try {
+            credentials.setModel(providerId, state.aiModelDraft)
+            if (state.aiApiKeyDraft.isNotBlank()) {
+                credentials.saveApiKey(providerId, state.aiApiKeyDraft)
+            }
+            mutableState.update {
+                it.copy(
+                    editingAiProvider = null,
+                    aiApiKeyDraft = "",
+                    aiModelDraft = "",
+                    message = "Настройки ${providerId.displayName()} сохранены",
+                )
+            }
+        } catch (error: IllegalArgumentException) {
+            mutableState.update {
+                it.copy(message = error.message ?: "Проверьте модель и API-ключ")
+            }
         }
     }
 
@@ -604,3 +709,11 @@ private const val MAX_TEXT_ANSWER_LENGTH = 4_000
 private const val MAX_COURSE_TITLE_LENGTH = 100
 private const val MAX_TOPIC_LENGTH = 2_000
 private const val MIN_TOPIC_LENGTH = 8
+private const val MAX_API_KEY_LENGTH = 512
+private const val MAX_MODEL_ID_LENGTH = 120
+
+internal fun AiProviderId.displayName(): String = when (this) {
+    AiProviderId.GEMINI -> "Google Gemini"
+    AiProviderId.GROQ -> "Groq"
+    AiProviderId.OPENROUTER -> "OpenRouter"
+}

@@ -6,10 +6,12 @@ import com.filodot.noscroll.core.contracts.SettingsRepository
 import com.filodot.noscroll.core.contracts.TaskRepository
 import com.filodot.noscroll.core.contracts.TaskPresetRepository
 import com.filodot.noscroll.core.contracts.UsageRepository
+import com.filodot.noscroll.core.learning.ai.AiCredentialRepository
 import com.filodot.noscroll.core.model.DailyUsage
 import com.filodot.noscroll.core.model.GateCycle
 import com.filodot.noscroll.core.model.UserSettings
 import com.filodot.noscroll.core.testing.InMemoryEmergencyRepository
+import com.filodot.noscroll.core.testing.InMemoryAiCredentialRepository
 import com.filodot.noscroll.core.testing.InMemoryLearningRepository
 import com.filodot.noscroll.core.testing.InMemorySettingsRepository
 import com.filodot.noscroll.core.testing.InMemoryTaskRepository
@@ -38,6 +40,7 @@ data class NoScrollAppGraph(
     val taskPresetRepository: TaskPresetRepository,
     val emergencyRepository: EmergencyRepository,
     val learningRepository: LearningRepository,
+    val aiCredentialRepository: AiCredentialRepository,
     val dashboardState: DashboardUiState,
     val settingsState: SettingsUiState,
     val historyState: EmergencyHistoryUiState,
@@ -83,6 +86,7 @@ data class NoScrollAppGraph(
                     ),
                     initialLessons = listOf(StaticLearningCatalog.firstLesson),
                 ),
+                aiCredentialRepository = InMemoryAiCredentialRepository(),
                 dashboardState = DashboardUiState(dateLabel = "14 июля"),
                 settingsState = SettingsUiState(
                     accessibilityStatus = SystemAccessUiStatus.ENABLED,

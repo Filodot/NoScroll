@@ -9,6 +9,7 @@ import androidx.compose.ui.test.performTextInput
 import com.filodot.noscroll.core.learning.content.StaticLearningCatalog
 import com.filodot.noscroll.core.learning.model.LearningCourseContent
 import com.filodot.noscroll.core.testing.InMemoryLearningRepository
+import com.filodot.noscroll.core.testing.InMemoryAiCredentialRepository
 import com.filodot.noscroll.ui.theme.NoScrollTheme
 import org.junit.Rule
 import org.junit.Test
@@ -22,7 +23,7 @@ class LearningScreenTest {
         val repository = repository()
         composeRule.setContent {
             NoScrollTheme {
-                LearningRoute(repository)
+                LearningRoute(repository, InMemoryAiCredentialRepository())
             }
         }
 
@@ -45,7 +46,7 @@ class LearningScreenTest {
         val repository = repository()
         composeRule.setContent {
             NoScrollTheme {
-                LearningRoute(repository)
+                LearningRoute(repository, InMemoryAiCredentialRepository())
             }
         }
 
