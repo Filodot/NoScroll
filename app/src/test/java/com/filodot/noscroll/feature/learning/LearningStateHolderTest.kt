@@ -1,14 +1,22 @@
 package com.filodot.noscroll.feature.learning
 
 import com.filodot.noscroll.core.learning.content.StaticLearningCatalog
+import com.filodot.noscroll.core.learning.ai.AiProviderId
+import com.filodot.noscroll.core.learning.generation.CurriculumGenerator
+import com.filodot.noscroll.core.learning.generation.GeneratedCurriculum
 import com.filodot.noscroll.core.learning.importing.LearningMaterialDocument
 import com.filodot.noscroll.core.learning.importing.LearningMaterialGateway
 import com.filodot.noscroll.core.learning.importing.MaterialSection
 import com.filodot.noscroll.core.learning.model.AttemptResult
 import com.filodot.noscroll.core.learning.model.LearningCourseContent
 import com.filodot.noscroll.core.learning.model.CourseOrigin
+import com.filodot.noscroll.core.learning.model.CourseStatus
+import com.filodot.noscroll.core.learning.model.CurriculumNode
+import com.filodot.noscroll.core.learning.model.CurriculumNodeType
 import com.filodot.noscroll.core.learning.model.GroundingMode
 import com.filodot.noscroll.core.learning.model.LearningSourceType
+import com.filodot.noscroll.core.learning.model.LearningConcept
+import com.filodot.noscroll.core.testing.InMemoryAiCredentialRepository
 import com.filodot.noscroll.core.testing.InMemoryLearningRepository
 import java.time.Instant
 import java.time.ZoneId
@@ -120,6 +128,82 @@ class LearningStateHolderTest {
         assertEquals("# Заголовок\n\nПолезный материал.", content.sourceChunks.single().text)
     }
 
+    @Test
+    fun `generated plan remains draft until user confirms it`() = runTest {
+        val repository = InMemoryLearningRepository()
+        val credentials = InMemoryAiCredentialRepository(
+            initialKeys = mapOf(AiProviderId.GEMINI to "test-secret"),
+        )
+        val generator = CurriculumGenerator { content ->
+            val concepts = (0..2).map { index ->
+                LearningConcept(
+                    id = "concept-$index",
+                    courseId = content.course.id,
+                    title = "Понятие $index",
+                    summary = "Подробное описание понятия номер $index.",
+                    position = index,
+                )
+            }
+            GeneratedCurriculum(
+                titleSuggestion = "План",
+                descriptionSuggestion = "Описание сгенерированного учебного плана.",
+                nodes = listOf(
+                    CurriculumNode(
+                        id = "node-1",
+                        courseId = content.course.id,
+                        parentId = null,
+                        type = CurriculumNodeType.TOPIC,
+                        title = "Первая тема",
+                        description = "Подробное описание первой темы.",
+                        position = 0,
+                        estimatedMinutes = 15,
+                        conceptIds = listOf("concept-0", "concept-1"),
+                    ),
+                    CurriculumNode(
+                        id = "node-2",
+                        courseId = content.course.id,
+                        parentId = null,
+                        type = CurriculumNodeType.TOPIC,
+                        title = "Вторая тема",
+                        description = "Подробное описание второй темы.",
+                        position = 1,
+                        estimatedMinutes = 15,
+                        conceptIds = listOf("concept-2"),
+                    ),
+                ),
+                concepts = concepts,
+                providerId = AiProviderId.GEMINI,
+                modelId = "test-model",
+                qualityScore = 95,
+                attempts = 1,
+            )
+        }
+        val holder = holder(
+            repository = repository,
+            aiCredentials = credentials,
+            curriculumGenerator = generator,
+        )
+        runCurrent()
+        holder.dispatch(LearningAction.StartCreateCourse)
+        holder.dispatch(LearningAction.SetCreateTopic("Основы SQL для аналитики"))
+        holder.dispatch(LearningAction.CreateTopicCourse)
+        runCurrent()
+
+        holder.dispatch(LearningAction.GeneratePlan)
+        runCurrent()
+        assertEquals(CourseStatus.DRAFT, holder.state.value.selectedCourse?.course?.status)
+        assertEquals(2, holder.state.value.selectedCourse?.curriculumNodes?.size)
+
+        holder.dispatch(LearningAction.SetPlanNodeTitle("node-1", "Введение в SQL"))
+        runCurrent()
+        holder.dispatch(LearningAction.ConfirmPlan)
+        runCurrent()
+
+        val confirmed = requireNotNull(holder.state.value.selectedCourse)
+        assertEquals(CourseStatus.READY, confirmed.course.status)
+        assertEquals("Введение в SQL", confirmed.curriculumNodes.first().title)
+    }
+
     private suspend fun kotlinx.coroutines.test.TestScope.openFirstLesson(
         holder: LearningStateHolder,
     ) {
@@ -132,10 +216,14 @@ class LearningStateHolderTest {
     private fun kotlinx.coroutines.test.TestScope.holder(
         repository: InMemoryLearningRepository,
         materialGateway: LearningMaterialGateway? = null,
+        aiCredentials: InMemoryAiCredentialRepository? = null,
+        curriculumGenerator: CurriculumGenerator? = null,
     ) = LearningStateHolder(
         repository = repository,
         scope = backgroundScope,
         materialGateway = materialGateway,
+        aiCredentials = aiCredentials,
+        curriculumGenerator = curriculumGenerator,
         now = { now },
         zoneId = ZoneId.of("UTC"),
         idGenerator = { "attempt-${repository.hashCode()}-${holderIds++}" },

@@ -8,6 +8,8 @@ import com.filodot.noscroll.core.learning.ai.AiCredentialRepository
 import com.filodot.noscroll.core.learning.ai.AiProviderId
 import com.filodot.noscroll.core.learning.ai.AiProviderSettings
 import com.filodot.noscroll.core.learning.content.StaticLearningCatalog
+import com.filodot.noscroll.core.learning.generation.CurriculumGenerationException
+import com.filodot.noscroll.core.learning.generation.CurriculumGenerator
 import com.filodot.noscroll.core.learning.importing.LearningMaterialGateway
 import com.filodot.noscroll.core.learning.importing.LearningMaterialImportException
 import com.filodot.noscroll.core.learning.importing.LearningMaterialProcessor
@@ -16,12 +18,15 @@ import com.filodot.noscroll.core.learning.model.AttemptResult
 import com.filodot.noscroll.core.learning.model.ConceptMastery
 import com.filodot.noscroll.core.learning.model.CourseOrigin
 import com.filodot.noscroll.core.learning.model.CourseStatus
+import com.filodot.noscroll.core.learning.model.CurriculumNode
+import com.filodot.noscroll.core.learning.model.CurriculumNodeType
 import com.filodot.noscroll.core.learning.model.EvidenceSelectionContent
 import com.filodot.noscroll.core.learning.model.FillBlankContent
 import com.filodot.noscroll.core.learning.model.LearningActivity
 import com.filodot.noscroll.core.learning.model.LearningAttempt
 import com.filodot.noscroll.core.learning.model.LearningCourse
 import com.filodot.noscroll.core.learning.model.LearningCourseContent
+import com.filodot.noscroll.core.learning.model.LearningConcept
 import com.filodot.noscroll.core.learning.model.LearningSource
 import com.filodot.noscroll.core.learning.model.LearningSourceType
 import com.filodot.noscroll.core.learning.model.GroundingMode
@@ -38,6 +43,8 @@ import java.time.Instant
 import java.time.ZoneId
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -82,6 +89,9 @@ data class LearningUiState(
     val editingAiProvider: AiProviderId? = null,
     val aiApiKeyDraft: String = "",
     val aiModelDraft: String = "",
+    val generatingPlan: Boolean = false,
+    val planDirty: Boolean = false,
+    val lastPlanProviderLabel: String? = null,
     val selectedCourse: LearningCourseContent? = null,
     val selectedCourseMasteryPercent: Int = 0,
     val readyLessons: Int = 0,
@@ -114,6 +124,14 @@ sealed interface LearningAction {
     data object SaveAiProvider : LearningAction
     data class ClearAiProviderKey(val providerId: AiProviderId) : LearningAction
     data class ToggleAiProvider(val providerId: AiProviderId, val enabled: Boolean) : LearningAction
+    data object GeneratePlan : LearningAction
+    data object BeginPlanEdit : LearningAction
+    data class SetPlanNodeTitle(val nodeId: String, val value: String) : LearningAction
+    data class SetPlanNodeDescription(val nodeId: String, val value: String) : LearningAction
+    data class MovePlanNode(val nodeId: String, val direction: Int) : LearningAction
+    data class DeletePlanNode(val nodeId: String) : LearningAction
+    data object AddPlanNode : LearningAction
+    data object ConfirmPlan : LearningAction
     data object CreateDemoCourse : LearningAction
     data class OpenCourse(val courseId: String) : LearningAction
     data object BackToCourses : LearningAction
@@ -134,6 +152,7 @@ class LearningStateHolder(
     private val scope: CoroutineScope,
     private val materialGateway: LearningMaterialGateway? = null,
     private val aiCredentials: AiCredentialRepository? = null,
+    private val curriculumGenerator: CurriculumGenerator? = null,
     private val materialProcessor: LearningMaterialProcessor = LearningMaterialProcessor(),
     private val answerChecker: LocalLearningAnswerChecker = LocalLearningAnswerChecker(),
     private val masteryPolicy: MasteryPolicy = MasteryPolicy(),
@@ -143,6 +162,7 @@ class LearningStateHolder(
 ) {
     private val mutableState = MutableStateFlow(LearningUiState())
     val state: StateFlow<LearningUiState> = mutableState.asStateFlow()
+    private var planSaveJob: Job? = null
 
     init {
         scope.launch {
@@ -248,6 +268,27 @@ class LearningStateHolder(
                 aiCredentials?.setEnabled(action.providerId, action.enabled)
             }
 
+            LearningAction.GeneratePlan -> scope.launch { generatePlan() }
+            LearningAction.BeginPlanEdit -> scope.launch { beginPlanEdit() }
+            is LearningAction.SetPlanNodeTitle -> {
+                updatePlanNode(action.nodeId) {
+                    it.copy(title = action.value.take(MAX_PLAN_TITLE_LENGTH))
+                }
+            }
+
+            is LearningAction.SetPlanNodeDescription -> {
+                updatePlanNode(action.nodeId) {
+                    it.copy(description = action.value.take(MAX_PLAN_DESCRIPTION_LENGTH))
+                }
+            }
+
+            is LearningAction.MovePlanNode -> scope.launch {
+                movePlanNode(action.nodeId, action.direction)
+            }
+
+            is LearningAction.DeletePlanNode -> scope.launch { deletePlanNode(action.nodeId) }
+            LearningAction.AddPlanNode -> scope.launch { addPlanNode() }
+            LearningAction.ConfirmPlan -> scope.launch { confirmPlan() }
             LearningAction.CreateDemoCourse -> scope.launch { createDemoCourse() }
             is LearningAction.OpenCourse -> scope.launch { openCourse(action.courseId) }
             LearningAction.BackToCourses -> mutableState.update {
@@ -255,6 +296,8 @@ class LearningStateHolder(
                     pane = LearningPane.COURSES,
                     selectedCourse = null,
                     lesson = null,
+                    planDirty = false,
+                    lastPlanProviderLabel = null,
                     message = null,
                 )
             }
@@ -320,6 +363,199 @@ class LearningStateHolder(
             mutableState.update {
                 it.copy(message = error.message ?: "Проверьте модель и API-ключ")
             }
+        }
+    }
+
+    private suspend fun generatePlan() {
+        val generator = curriculumGenerator
+        val content = mutableState.value.selectedCourse
+        if (generator == null || content == null) {
+            mutableState.update {
+                it.copy(message = "Генератор учебной программы пока недоступен")
+            }
+            return
+        }
+        if (mutableState.value.aiProviders.none { it.enabled && it.hasApiKey }) {
+            mutableState.update {
+                it.copy(message = "Добавьте API-ключ хотя бы одного AI-провайдера")
+            }
+            return
+        }
+        mutableState.update { it.copy(generatingPlan = true, message = null) }
+        try {
+            val generated = generator.generate(content)
+            val updated = content.copy(
+                course = content.course.copy(
+                    status = CourseStatus.DRAFT,
+                    updatedAt = now(),
+                ),
+                curriculumNodes = generated.nodes,
+                concepts = generated.concepts,
+            )
+            repository.saveCourseContent(updated)
+            openCourse(updated.course.id)
+            mutableState.update {
+                it.copy(
+                    generatingPlan = false,
+                    planDirty = true,
+                    lastPlanProviderLabel = "${generated.providerId.displayName()} · " +
+                        "${generated.modelId} · качество ${generated.qualityScore}/100",
+                    message = if (generated.attempts > 1) {
+                        "План принят после ${generated.attempts} попыток проверки"
+                    } else {
+                        "Черновик плана готов. Проверьте и подтвердите его."
+                    },
+                )
+            }
+        } catch (error: CurriculumGenerationException) {
+            mutableState.update {
+                it.copy(
+                    generatingPlan = false,
+                    message = error.issues.firstOrNull()
+                        ?: error.message
+                        ?: "Не удалось получить качественный план",
+                )
+            }
+        } catch (error: Exception) {
+            mutableState.update {
+                it.copy(
+                    generatingPlan = false,
+                    message = error.message?.take(400) ?: "Провайдеры ИИ недоступны",
+                )
+            }
+        }
+    }
+
+    private suspend fun beginPlanEdit() {
+        val content = mutableState.value.selectedCourse ?: return
+        val updated = content.copy(
+            course = content.course.copy(status = CourseStatus.DRAFT, updatedAt = now()),
+        )
+        repository.saveCourseContent(updated)
+        openCourse(updated.course.id)
+        mutableState.update { it.copy(planDirty = true) }
+    }
+
+    private fun updatePlanNode(
+        nodeId: String,
+        transform: (CurriculumNode) -> CurriculumNode,
+    ) {
+        val content = mutableState.value.selectedCourse ?: return
+        if (content.course.status != CourseStatus.DRAFT) return
+        val updated = content.copy(
+            course = content.course.copy(updatedAt = now()),
+            curriculumNodes = content.curriculumNodes.map {
+                if (it.id == nodeId) transform(it) else it
+            },
+        )
+        mutableState.update { it.copy(selectedCourse = updated, planDirty = true) }
+        planSaveJob?.cancel()
+        planSaveJob = scope.launch {
+            delay(PLAN_SAVE_DEBOUNCE_MILLIS)
+            repository.saveCourseContent(updated)
+        }
+    }
+
+    private suspend fun movePlanNode(nodeId: String, direction: Int) {
+        val content = mutableState.value.selectedCourse ?: return
+        if (content.course.status != CourseStatus.DRAFT) return
+        val nodes = content.curriculumNodes.sortedBy(CurriculumNode::position).toMutableList()
+        val from = nodes.indexOfFirst { it.id == nodeId }
+        if (from < 0) return
+        val to = (from + direction).coerceIn(0, nodes.lastIndex)
+        if (from == to) return
+        val moved = nodes.removeAt(from)
+        nodes.add(to, moved)
+        saveEditedPlan(
+            content.copy(
+                curriculumNodes = nodes.mapIndexed { index, node -> node.copy(position = index) },
+            ),
+        )
+    }
+
+    private suspend fun deletePlanNode(nodeId: String) {
+        val content = mutableState.value.selectedCourse ?: return
+        if (content.course.status != CourseStatus.DRAFT) return
+        val removedConceptIds = content.curriculumNodes.firstOrNull { it.id == nodeId }
+            ?.conceptIds
+            ?.toSet()
+            .orEmpty()
+        saveEditedPlan(
+            content.copy(
+                curriculumNodes = content.curriculumNodes
+                    .filterNot { it.id == nodeId }
+                    .mapIndexed { index, node -> node.copy(position = index) },
+                concepts = content.concepts
+                    .filterNot { it.id in removedConceptIds }
+                    .map { it.copy(prerequisiteIds = it.prerequisiteIds - removedConceptIds) },
+            ),
+        )
+    }
+
+    private suspend fun addPlanNode() {
+        val content = mutableState.value.selectedCourse ?: return
+        if (content.course.status != CourseStatus.DRAFT) return
+        val conceptId = idGenerator()
+        val position = content.curriculumNodes.size
+        saveEditedPlan(
+            content.copy(
+                curriculumNodes = content.curriculumNodes + CurriculumNode(
+                    id = idGenerator(),
+                    courseId = content.course.id,
+                    parentId = null,
+                    type = CurriculumNodeType.TOPIC,
+                    title = "Новая тема",
+                    description = "Опишите, чему должен научиться пользователь.",
+                    position = position,
+                    estimatedMinutes = 15,
+                    conceptIds = listOf(conceptId),
+                ),
+                concepts = content.concepts + LearningConcept(
+                    id = conceptId,
+                    courseId = content.course.id,
+                    title = "Пользовательская тема ${position + 1}",
+                    summary = "Понятие добавлено пользователем при редактировании плана.",
+                    position = content.concepts.size,
+                ),
+            ),
+        )
+    }
+
+    private suspend fun saveEditedPlan(content: LearningCourseContent) {
+        planSaveJob?.cancel()
+        val updated = content.copy(course = content.course.copy(updatedAt = now()))
+        repository.saveCourseContent(updated)
+        openCourse(updated.course.id)
+        mutableState.update { it.copy(planDirty = true) }
+    }
+
+    private suspend fun confirmPlan() {
+        planSaveJob?.cancel()
+        val content = mutableState.value.selectedCourse ?: return
+        if (content.curriculumNodes.size < 2 ||
+            content.curriculumNodes.any {
+                it.title.trim().length < 3 || it.description.trim().length < 10
+            }
+        ) {
+            mutableState.update {
+                it.copy(message = "Оставьте минимум две заполненные темы с описаниями")
+            }
+            return
+        }
+        val updated = content.copy(
+            course = content.course.copy(
+                status = CourseStatus.READY,
+                planVersion = content.course.planVersion + 1,
+                updatedAt = now(),
+            ),
+            curriculumNodes = content.curriculumNodes.map {
+                it.copy(title = it.title.trim(), description = it.description.trim())
+            },
+        )
+        repository.saveCourseContent(updated)
+        openCourse(updated.course.id)
+        mutableState.update {
+            it.copy(planDirty = false, message = "План подтверждён и готов к созданию уроков")
         }
     }
 
@@ -711,6 +947,9 @@ private const val MAX_TOPIC_LENGTH = 2_000
 private const val MIN_TOPIC_LENGTH = 8
 private const val MAX_API_KEY_LENGTH = 512
 private const val MAX_MODEL_ID_LENGTH = 120
+private const val MAX_PLAN_TITLE_LENGTH = 100
+private const val MAX_PLAN_DESCRIPTION_LENGTH = 500
+private const val PLAN_SAVE_DEBOUNCE_MILLIS = 500L
 
 internal fun AiProviderId.displayName(): String = when (this) {
     AiProviderId.GEMINI -> "Google Gemini"

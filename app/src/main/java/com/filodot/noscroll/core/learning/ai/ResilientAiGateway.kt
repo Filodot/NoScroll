@@ -9,11 +9,11 @@ class ResilientAiGateway(
     private val now: () -> Instant = Instant::now,
     private val failureThreshold: Int = 2,
     private val circuitCooldown: Duration = Duration.ofMinutes(10),
-) {
+) : AiGateway {
     private val providersById = providers.associateBy(AiTextProvider::id)
     private val failures = mutableMapOf<AiProviderId, FailureState>()
 
-    suspend fun generate(request: AiGenerationRequest): AiGenerationResponse {
+    override suspend fun generate(request: AiGenerationRequest): AiGenerationResponse {
         val providerSettings = credentials.settings.value
             .filter { it.enabled && it.hasApiKey }
             .sortedBy(AiProviderSettings::priority)

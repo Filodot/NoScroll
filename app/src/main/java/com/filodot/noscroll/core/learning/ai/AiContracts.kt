@@ -57,6 +57,10 @@ interface AiTextProvider {
     ): AiGenerationResponse
 }
 
+fun interface AiGateway {
+    suspend fun generate(request: AiGenerationRequest): AiGenerationResponse
+}
+
 enum class AiFailureKind {
     AUTHENTICATION,
     RATE_LIMIT,

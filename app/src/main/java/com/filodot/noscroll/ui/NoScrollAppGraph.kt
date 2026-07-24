@@ -7,6 +7,7 @@ import com.filodot.noscroll.core.contracts.TaskRepository
 import com.filodot.noscroll.core.contracts.TaskPresetRepository
 import com.filodot.noscroll.core.contracts.UsageRepository
 import com.filodot.noscroll.core.learning.ai.AiCredentialRepository
+import com.filodot.noscroll.core.learning.ai.AiGateway
 import com.filodot.noscroll.core.model.DailyUsage
 import com.filodot.noscroll.core.model.GateCycle
 import com.filodot.noscroll.core.model.UserSettings
@@ -41,6 +42,7 @@ data class NoScrollAppGraph(
     val emergencyRepository: EmergencyRepository,
     val learningRepository: LearningRepository,
     val aiCredentialRepository: AiCredentialRepository,
+    val aiGateway: AiGateway? = null,
     val dashboardState: DashboardUiState,
     val settingsState: SettingsUiState,
     val historyState: EmergencyHistoryUiState,

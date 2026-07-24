@@ -544,6 +544,7 @@ fun NoScrollApp(
                     LearningRoute(
                         repository = appGraph.learningRepository,
                         aiCredentials = appGraph.aiCredentialRepository,
+                        aiGateway = appGraph.aiGateway,
                     )
                 }
             }

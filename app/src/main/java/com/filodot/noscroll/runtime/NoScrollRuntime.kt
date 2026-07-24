@@ -12,6 +12,11 @@ import com.filodot.noscroll.data.local.repository.RoomTaskPresetRepository
 import com.filodot.noscroll.data.local.repository.RoomUsageRepository
 import com.filodot.noscroll.data.local.room.NoScrollDatabase
 import com.filodot.noscroll.data.local.security.SecureAiCredentialRepository
+import com.filodot.noscroll.core.learning.ai.ResilientAiGateway
+import com.filodot.noscroll.data.learning.ai.GeminiAiProvider
+import com.filodot.noscroll.data.learning.ai.GroqAiProvider
+import com.filodot.noscroll.data.learning.ai.OpenRouterAiProvider
+import com.filodot.noscroll.data.learning.ai.UrlConnectionAiHttpTransport
 import com.filodot.noscroll.feature.dashboard.DashboardUiState
 import com.filodot.noscroll.feature.history.EmergencyHistoryUiState
 import com.filodot.noscroll.feature.settings.DetectorUiStatus
@@ -59,6 +64,15 @@ class NoScrollRuntime private constructor(application: Application) {
     )
     val learningRepository = RoomLearningRepository(database.learningDao())
     val aiCredentialRepository = SecureAiCredentialRepository(application)
+    private val aiHttpTransport = UrlConnectionAiHttpTransport()
+    val aiGateway = ResilientAiGateway(
+        credentials = aiCredentialRepository,
+        providers = listOf(
+            GeminiAiProvider(aiHttpTransport),
+            GroqAiProvider(aiHttpTransport),
+            OpenRouterAiProvider(aiHttpTransport),
+        ),
+    )
     val systemAccess = AndroidSystemAccess(application)
     private val repositoriesReady = combine(
         listOf(
@@ -91,6 +105,7 @@ class NoScrollRuntime private constructor(application: Application) {
         emergencyRepository = emergencyRepository,
         learningRepository = learningRepository,
         aiCredentialRepository = aiCredentialRepository,
+        aiGateway = aiGateway,
         dashboardState = DashboardUiState(dateLabel = "Сегодня"),
         settingsState = SettingsUiState(
             accessibilityStatus = SystemAccessUiStatus.NOT_ENABLED,

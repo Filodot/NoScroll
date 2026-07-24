@@ -43,11 +43,14 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.filodot.noscroll.core.contracts.LearningRepository
 import com.filodot.noscroll.core.learning.ai.AiCredentialRepository
+import com.filodot.noscroll.core.learning.ai.AiGateway
 import com.filodot.noscroll.core.learning.ai.AiProviderId
+import com.filodot.noscroll.core.learning.generation.AiCurriculumGenerator
 import com.filodot.noscroll.data.learning.AndroidLearningMaterialGateway
 import com.filodot.noscroll.core.learning.model.CodeCompletionContent
 import com.filodot.noscroll.core.learning.model.CodeFixContent
 import com.filodot.noscroll.core.learning.model.CodeOutputContent
+import com.filodot.noscroll.core.learning.model.CourseStatus
 import com.filodot.noscroll.core.learning.model.EvidenceSelectionContent
 import com.filodot.noscroll.core.learning.model.FillBlankContent
 import com.filodot.noscroll.core.learning.model.FlashcardContent
@@ -68,16 +71,19 @@ fun LearningRoute(
     repository: LearningRepository,
     aiCredentials: AiCredentialRepository,
     modifier: Modifier = Modifier,
+    aiGateway: AiGateway? = null,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val materialGateway = remember(context) { AndroidLearningMaterialGateway(context) }
-    val holder = remember(repository, scope, materialGateway) {
+    val curriculumGenerator = remember(aiGateway) { aiGateway?.let(::AiCurriculumGenerator) }
+    val holder = remember(repository, scope, materialGateway, aiCredentials, curriculumGenerator) {
         LearningStateHolder(
             repository = repository,
             scope = scope,
             materialGateway = materialGateway,
             aiCredentials = aiCredentials,
+            curriculumGenerator = curriculumGenerator,
         )
     }
     val state by holder.state.collectAsStateWithLifecycle()
@@ -453,6 +459,50 @@ private fun CoursePane(
             }
         }
     }
+    if (content.course.status == CourseStatus.DRAFT) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            ),
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text("Черновик программы", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "При запуске выбранные фрагменты материала будут отправлены внешнему " +
+                        "AI-провайдеру. Проверьте результат перед подтверждением.",
+                )
+                state.lastPlanProviderLabel?.let { Text(it) }
+                if (state.generatingPlan) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    Text("Создаём и проверяем план. Плохой ответ будет запрошен заново…")
+                } else {
+                    Button(
+                        onClick = { onAction(LearningAction.GeneratePlan) },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    ) {
+                        Text(
+                            if (content.curriculumNodes.isEmpty()) {
+                                "Сгенерировать план"
+                            } else {
+                                "Перегенерировать план"
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    } else {
+        OutlinedButton(
+            onClick = { onAction(LearningAction.BeginPlanEdit) },
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        ) {
+            Text("Редактировать план")
+        }
+    }
     Heading("План курса", small = true)
     if (content.curriculumNodes.isEmpty()) {
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -474,13 +524,77 @@ private fun CoursePane(
             }
         }
     } else {
-        content.curriculumNodes.forEach { node ->
+        val orderedNodes = content.curriculumNodes.sortedBy { it.position }
+        orderedNodes.forEachIndexed { index, node ->
             Card(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(node.title, style = MaterialTheme.typography.titleMedium)
-                    Text(node.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (content.course.status == CourseStatus.DRAFT) {
+                        OutlinedTextField(
+                            value = node.title,
+                            onValueChange = {
+                                onAction(LearningAction.SetPlanNodeTitle(node.id, it))
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Тема ${index + 1}") },
+                            singleLine = true,
+                        )
+                        OutlinedTextField(
+                            value = node.description,
+                            onValueChange = {
+                                onAction(LearningAction.SetPlanNodeDescription(node.id, it))
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Результат обучения") },
+                            minLines = 2,
+                            maxLines = 5,
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    onAction(LearningAction.MovePlanNode(node.id, -1))
+                                },
+                                enabled = index > 0,
+                            ) {
+                                Text("↑")
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    onAction(LearningAction.MovePlanNode(node.id, 1))
+                                },
+                                enabled = index < orderedNodes.lastIndex,
+                            ) {
+                                Text("↓")
+                            }
+                            TextButton(
+                                onClick = { onAction(LearningAction.DeletePlanNode(node.id)) },
+                            ) {
+                                Text("Удалить")
+                            }
+                        }
+                    } else {
+                        Text(node.title, style = MaterialTheme.typography.titleMedium)
+                        Text(node.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     Text("${node.estimatedMinutes} мин · ${node.conceptIds.size} понятия")
                 }
+            }
+        }
+        if (content.course.status == CourseStatus.DRAFT) {
+            OutlinedButton(
+                onClick = { onAction(LearningAction.AddPlanNode) },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) {
+                Text("Добавить тему")
+            }
+            Button(
+                onClick = { onAction(LearningAction.ConfirmPlan) },
+                enabled = !state.generatingPlan,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) {
+                Text("Подтвердить план")
             }
         }
     }
