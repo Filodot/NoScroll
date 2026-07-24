@@ -62,6 +62,160 @@ interface CustomTaskPresetDao {
 }
 
 @Dao
+abstract class LearningDao {
+    @Query("SELECT * FROM learning_courses ORDER BY updated_at_epoch_millis DESC, id")
+    abstract fun observeCourses(): Flow<List<LearningCourseEntity>>
+
+    @Query("SELECT * FROM learning_courses WHERE id = :courseId")
+    abstract suspend fun getCourse(courseId: String): LearningCourseEntity?
+
+    @Query("SELECT * FROM learning_sources WHERE course_id = :courseId ORDER BY imported_at_epoch_millis, id")
+    abstract suspend fun getSources(courseId: String): List<LearningSourceEntity>
+
+    @Query("SELECT * FROM curriculum_nodes WHERE course_id = :courseId ORDER BY position, id")
+    abstract suspend fun getCurriculumNodes(courseId: String): List<CurriculumNodeEntity>
+
+    @Query("SELECT * FROM learning_concepts WHERE course_id = :courseId ORDER BY position, id")
+    abstract suspend fun getConcepts(courseId: String): List<LearningConceptEntity>
+
+    @Query("SELECT * FROM lesson_packages WHERE id = :lessonId")
+    abstract suspend fun getLesson(lessonId: String): LessonPackageEntity?
+
+    @Query("SELECT * FROM learning_activities WHERE lesson_id = :lessonId ORDER BY position, id")
+    abstract suspend fun getActivities(lessonId: String): List<LearningActivityEntity>
+
+    @Query(
+        "SELECT * FROM lesson_packages WHERE course_id = :courseId AND status = 'VALIDATED' " +
+            "ORDER BY generated_at_epoch_millis, id LIMIT 1",
+    )
+    abstract suspend fun getNextValidatedLesson(courseId: String): LessonPackageEntity?
+
+    @Query("SELECT COUNT(*) FROM lesson_packages WHERE course_id = :courseId AND status = 'VALIDATED'")
+    abstract fun observeValidatedLessonCount(courseId: String): Flow<Int>
+
+    @Query("SELECT * FROM learning_attempts WHERE course_id = :courseId ORDER BY occurred_at_epoch_millis, id")
+    abstract suspend fun getAttempts(courseId: String): List<LearningAttemptEntity>
+
+    @Query(
+        "SELECT concept_mastery.* FROM concept_mastery " +
+            "INNER JOIN learning_concepts ON learning_concepts.id = concept_mastery.concept_id " +
+            "WHERE learning_concepts.course_id = :courseId ORDER BY learning_concepts.position",
+    )
+    abstract suspend fun getMastery(courseId: String): List<ConceptMasteryEntity>
+
+    @Upsert
+    protected abstract suspend fun upsertCourse(entity: LearningCourseEntity)
+
+    @Upsert
+    protected abstract suspend fun upsertSources(entities: List<LearningSourceEntity>)
+
+    @Upsert
+    protected abstract suspend fun upsertCurriculumNodes(entities: List<CurriculumNodeEntity>)
+
+    @Upsert
+    protected abstract suspend fun upsertConcepts(entities: List<LearningConceptEntity>)
+
+    @Upsert
+    protected abstract suspend fun upsertLesson(entity: LessonPackageEntity)
+
+    @Upsert
+    protected abstract suspend fun upsertActivities(entities: List<LearningActivityEntity>)
+
+    @Upsert
+    abstract suspend fun upsertAttempt(entity: LearningAttemptEntity)
+
+    @Upsert
+    abstract suspend fun upsertMastery(entity: ConceptMasteryEntity)
+
+    @Query("DELETE FROM learning_sources WHERE course_id = :courseId")
+    protected abstract suspend fun deleteSources(courseId: String)
+
+    @Query("DELETE FROM curriculum_nodes WHERE course_id = :courseId")
+    protected abstract suspend fun deleteCurriculumNodes(courseId: String)
+
+    @Query("DELETE FROM learning_concepts WHERE course_id = :courseId")
+    protected abstract suspend fun deleteConcepts(courseId: String)
+
+    @Query("DELETE FROM concept_mastery WHERE concept_id NOT IN (SELECT id FROM learning_concepts)")
+    protected abstract suspend fun deleteOrphanMastery()
+
+    @Query("DELETE FROM learning_activities WHERE lesson_id = :lessonId")
+    protected abstract suspend fun deleteActivities(lessonId: String)
+
+    @Query(
+        "UPDATE lesson_packages SET status = 'CONSUMED' " +
+            "WHERE id = :lessonId AND status = 'VALIDATED'",
+    )
+    protected abstract suspend fun consumeLesson(lessonId: String): Int
+
+    @Query(
+        "DELETE FROM concept_mastery WHERE concept_id IN " +
+            "(SELECT id FROM learning_concepts WHERE course_id = :courseId)",
+    )
+    protected abstract suspend fun deleteCourseMastery(courseId: String)
+
+    @Query("DELETE FROM learning_attempts WHERE course_id = :courseId")
+    protected abstract suspend fun deleteCourseAttempts(courseId: String)
+
+    @Query(
+        "DELETE FROM learning_activities WHERE lesson_id IN " +
+            "(SELECT id FROM lesson_packages WHERE course_id = :courseId)",
+    )
+    protected abstract suspend fun deleteCourseActivities(courseId: String)
+
+    @Query("DELETE FROM lesson_packages WHERE course_id = :courseId")
+    protected abstract suspend fun deleteCourseLessons(courseId: String)
+
+    @Query("DELETE FROM learning_courses WHERE id = :courseId")
+    protected abstract suspend fun deleteCourseRow(courseId: String)
+
+    @Transaction
+    open suspend fun saveCourseContent(
+        course: LearningCourseEntity,
+        sources: List<LearningSourceEntity>,
+        nodes: List<CurriculumNodeEntity>,
+        concepts: List<LearningConceptEntity>,
+    ) {
+        upsertCourse(course)
+        deleteSources(course.id)
+        deleteCurriculumNodes(course.id)
+        deleteConcepts(course.id)
+        if (sources.isNotEmpty()) upsertSources(sources)
+        if (nodes.isNotEmpty()) upsertCurriculumNodes(nodes)
+        if (concepts.isNotEmpty()) upsertConcepts(concepts)
+        deleteOrphanMastery()
+    }
+
+    @Transaction
+    open suspend fun saveLesson(
+        lesson: LessonPackageEntity,
+        activities: List<LearningActivityEntity>,
+    ) {
+        upsertLesson(lesson)
+        deleteActivities(lesson.id)
+        if (activities.isNotEmpty()) upsertActivities(activities)
+    }
+
+    @Transaction
+    open suspend fun takeNextValidatedLesson(courseId: String): LessonPackageEntity? {
+        val lesson = getNextValidatedLesson(courseId) ?: return null
+        return if (consumeLesson(lesson.id) == 1) lesson.copy(status = "CONSUMED") else null
+    }
+
+    @Transaction
+    open suspend fun deleteCourse(courseId: String) {
+        deleteCourseMastery(courseId)
+        deleteCourseAttempts(courseId)
+        deleteCourseActivities(courseId)
+        deleteCourseLessons(courseId)
+        deleteSources(courseId)
+        deleteCurriculumNodes(courseId)
+        deleteConcepts(courseId)
+        deleteCourseRow(courseId)
+    }
+}
+
+@Dao
 interface EmergencyEventDao {
     @Query(
         "SELECT * FROM emergency_events WHERE deactivated_at_epoch_millis IS NULL " +

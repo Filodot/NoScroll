@@ -28,7 +28,7 @@ class NoScrollMigrationTest {
     }
 
     @Test
-    fun migrationOneToFivePreservesUsageAndInitializesNewColumns() = runBlocking {
+    fun migrationOneToSixPreservesUsageAndInitializesNewColumns() = runBlocking {
         createVersionOneDatabase()
 
         val database = Room.databaseBuilder(context, NoScrollDatabase::class.java, databaseName)
@@ -43,11 +43,12 @@ class NoScrollMigrationTest {
         assertEquals(0L, migrated.instagramSeconds)
         assertEquals(0L, migrated.emergencyYoutubeSeconds)
         assertEquals(null, database.gateCycleDao().get("current"))
+        assertEquals(null, database.learningDao().getCourse("missing"))
         database.close()
     }
 
     @Test
-    fun migrationTwoToFivePreservesPendingGateAndAddsAllDefaults() = runBlocking {
+    fun migrationTwoToSixPreservesPendingGateAndAddsAllDefaults() = runBlocking {
         createVersionTwoDatabase()
 
         val database = Room.databaseBuilder(context, NoScrollDatabase::class.java, databaseName)
@@ -55,6 +56,7 @@ class NoScrollMigrationTest {
                 NoScrollDatabase.MIGRATION_2_3,
                 NoScrollDatabase.MIGRATION_3_4,
                 NoScrollDatabase.MIGRATION_4_5,
+                NoScrollDatabase.MIGRATION_5_6,
             )
             .allowMainThreadQueries()
             .build()
@@ -74,11 +76,15 @@ class NoScrollMigrationTest {
     }
 
     @Test
-    fun migrationThreeToFivePreservesVersionThreeState() = runBlocking {
+    fun migrationThreeToSixPreservesVersionThreeState() = runBlocking {
         createVersionThreeDatabase()
 
         val database = Room.databaseBuilder(context, NoScrollDatabase::class.java, databaseName)
-            .addMigrations(NoScrollDatabase.MIGRATION_3_4, NoScrollDatabase.MIGRATION_4_5)
+            .addMigrations(
+                NoScrollDatabase.MIGRATION_3_4,
+                NoScrollDatabase.MIGRATION_4_5,
+                NoScrollDatabase.MIGRATION_5_6,
+            )
             .allowMainThreadQueries()
             .build()
         val cycle = requireNotNull(database.gateCycleDao().get("current")).toModel()

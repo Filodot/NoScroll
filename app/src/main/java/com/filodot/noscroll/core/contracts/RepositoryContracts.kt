@@ -7,6 +7,11 @@ import com.filodot.noscroll.core.model.GateCycle
 import com.filodot.noscroll.core.model.PendingTask
 import com.filodot.noscroll.core.model.CustomTaskPreset
 import com.filodot.noscroll.core.model.UserSettings
+import com.filodot.noscroll.core.learning.model.ConceptMastery
+import com.filodot.noscroll.core.learning.model.LearningAttempt
+import com.filodot.noscroll.core.learning.model.LearningCourse
+import com.filodot.noscroll.core.learning.model.LearningCourseContent
+import com.filodot.noscroll.core.learning.model.LessonPackage
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -39,6 +44,33 @@ interface TaskPresetRepository {
     suspend fun save(preset: CustomTaskPreset)
 
     suspend fun delete(presetId: String)
+}
+
+interface LearningRepository {
+    val courses: Flow<List<LearningCourse>>
+
+    suspend fun saveCourseContent(content: LearningCourseContent)
+
+    suspend fun getCourseContent(courseId: String): LearningCourseContent?
+
+    suspend fun saveLesson(lesson: LessonPackage)
+
+    suspend fun peekNextLesson(courseId: String): LessonPackage?
+
+    /** Atomically moves the returned package out of the validated offline queue. */
+    suspend fun takeNextLesson(courseId: String): LessonPackage?
+
+    fun observeValidatedLessonCount(courseId: String): Flow<Int>
+
+    suspend fun saveAttempt(attempt: LearningAttempt)
+
+    suspend fun getAttempts(courseId: String): List<LearningAttempt>
+
+    suspend fun saveMastery(mastery: ConceptMastery)
+
+    suspend fun getMastery(courseId: String): List<ConceptMastery>
+
+    suspend fun deleteCourse(courseId: String)
 }
 
 interface EmergencyRepository {

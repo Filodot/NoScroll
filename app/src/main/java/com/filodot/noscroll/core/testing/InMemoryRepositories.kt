@@ -2,6 +2,7 @@ package com.filodot.noscroll.core.testing
 
 import com.filodot.noscroll.core.contracts.EmergencyRepository
 import com.filodot.noscroll.core.contracts.SettingsRepository
+import com.filodot.noscroll.core.contracts.LearningRepository
 import com.filodot.noscroll.core.contracts.TaskRepository
 import com.filodot.noscroll.core.contracts.TaskPresetRepository
 import com.filodot.noscroll.core.contracts.UsageRepository
@@ -12,9 +13,16 @@ import com.filodot.noscroll.core.model.EmergencyState
 import com.filodot.noscroll.core.model.GateCycle
 import com.filodot.noscroll.core.model.PendingTask
 import com.filodot.noscroll.core.model.UserSettings
+import com.filodot.noscroll.core.learning.model.ConceptMastery
+import com.filodot.noscroll.core.learning.model.LearningAttempt
+import com.filodot.noscroll.core.learning.model.LearningCourse
+import com.filodot.noscroll.core.learning.model.LearningCourseContent
+import com.filodot.noscroll.core.learning.model.LessonPackage
+import com.filodot.noscroll.core.learning.model.LessonPackageStatus
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 
 class InMemorySettingsRepository(
     initialSettings: UserSettings = UserSettings(),
@@ -77,6 +85,92 @@ class InMemoryTaskPresetRepository(
 
     override suspend fun delete(presetId: String) {
         mutablePresets.value = mutablePresets.value.filterNot { it.id == presetId }
+    }
+}
+
+class InMemoryLearningRepository(
+    initialContent: List<LearningCourseContent> = emptyList(),
+    initialLessons: List<LessonPackage> = emptyList(),
+) : LearningRepository {
+    private val contentById = initialContent.associateBy { it.course.id }.toMutableMap()
+    private val lessonsById = initialLessons.associateBy(LessonPackage::id).toMutableMap()
+    private val mutableLessons = MutableStateFlow(initialLessons)
+    private val attemptsById = mutableMapOf<String, LearningAttempt>()
+    private val masteryByConceptId = mutableMapOf<String, ConceptMastery>()
+    private val mutableCourses = MutableStateFlow(
+        initialContent.map(LearningCourseContent::course),
+    )
+
+    override val courses: Flow<List<LearningCourse>> = mutableCourses
+
+    override suspend fun saveCourseContent(content: LearningCourseContent) {
+        contentById[content.course.id] = content
+        mutableCourses.value = contentById.values
+            .map(LearningCourseContent::course)
+            .sortedByDescending(LearningCourse::updatedAt)
+    }
+
+    override suspend fun getCourseContent(courseId: String): LearningCourseContent? =
+        contentById[courseId]
+
+    override suspend fun saveLesson(lesson: LessonPackage) {
+        lessonsById[lesson.id] = lesson
+        publishLessons()
+    }
+
+    override suspend fun peekNextLesson(courseId: String): LessonPackage? =
+        validatedLessons(courseId).firstOrNull()
+
+    override suspend fun takeNextLesson(courseId: String): LessonPackage? {
+        val lesson = validatedLessons(courseId).firstOrNull() ?: return null
+        val consumed = lesson.copy(status = LessonPackageStatus.CONSUMED)
+        lessonsById[lesson.id] = consumed
+        publishLessons()
+        return consumed
+    }
+
+    override fun observeValidatedLessonCount(courseId: String): Flow<Int> =
+        mutableLessons.map { lessons ->
+            lessons.count {
+                it.courseId == courseId && it.status == LessonPackageStatus.VALIDATED
+            }
+        }
+
+    override suspend fun saveAttempt(attempt: LearningAttempt) {
+        attemptsById[attempt.id] = attempt
+    }
+
+    override suspend fun getAttempts(courseId: String): List<LearningAttempt> =
+        attemptsById.values.filter { it.courseId == courseId }.sortedBy(LearningAttempt::occurredAt)
+
+    override suspend fun saveMastery(mastery: ConceptMastery) {
+        masteryByConceptId[mastery.conceptId] = mastery
+    }
+
+    override suspend fun getMastery(courseId: String): List<ConceptMastery> {
+        val conceptIds = contentById[courseId]?.concepts?.mapTo(mutableSetOf()) { it.id }
+            ?: emptySet()
+        return masteryByConceptId.values.filter { it.conceptId in conceptIds }
+    }
+
+    override suspend fun deleteCourse(courseId: String) {
+        val conceptIds = contentById.remove(courseId)?.concepts
+            ?.mapTo(mutableSetOf()) { it.id }
+            .orEmpty()
+        lessonsById.entries.removeAll { it.value.courseId == courseId }
+        publishLessons()
+        attemptsById.entries.removeAll { it.value.courseId == courseId }
+        masteryByConceptId.keys.removeAll(conceptIds)
+        mutableCourses.value = contentById.values.map(LearningCourseContent::course)
+    }
+
+    private fun validatedLessons(courseId: String): List<LessonPackage> =
+        lessonsById.values
+            .filter { it.courseId == courseId && it.status == LessonPackageStatus.VALIDATED }
+            .sortedWith(compareBy(LessonPackage::generatedAt, LessonPackage::id))
+
+    private fun publishLessons() {
+        mutableLessons.value = lessonsById.values.toList()
     }
 }
 

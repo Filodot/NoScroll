@@ -5,6 +5,7 @@ import com.filodot.noscroll.core.model.DailyUsage
 import com.filodot.noscroll.core.model.GateCycle
 import com.filodot.noscroll.data.local.datastore.DataStoreSettingsRepository
 import com.filodot.noscroll.data.local.repository.RoomEmergencyRepository
+import com.filodot.noscroll.data.local.repository.RoomLearningRepository
 import com.filodot.noscroll.data.local.repository.RoomTaskGrantTransaction
 import com.filodot.noscroll.data.local.repository.RoomTaskRepository
 import com.filodot.noscroll.data.local.repository.RoomTaskPresetRepository
@@ -55,6 +56,7 @@ class NoScrollRuntime private constructor(application: Application) {
         database.emergencyEventDao(),
         applicationScope,
     )
+    val learningRepository = RoomLearningRepository(database.learningDao())
     val systemAccess = AndroidSystemAccess(application)
     private val repositoriesReady = combine(
         listOf(
@@ -85,6 +87,7 @@ class NoScrollRuntime private constructor(application: Application) {
         taskRepository = taskRepository,
         taskPresetRepository = taskPresetRepository,
         emergencyRepository = emergencyRepository,
+        learningRepository = learningRepository,
         dashboardState = DashboardUiState(dateLabel = "Сегодня"),
         settingsState = SettingsUiState(
             accessibilityStatus = SystemAccessUiStatus.NOT_ENABLED,

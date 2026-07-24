@@ -63,6 +63,13 @@ data class LearningCourse(
     val updatedAt: Instant,
 )
 
+data class LearningCourseContent(
+    val course: LearningCourse,
+    val sources: List<LearningSource>,
+    val curriculumNodes: List<CurriculumNode>,
+    val concepts: List<LearningConcept>,
+)
+
 enum class CurriculumNodeType {
     SECTION,
     TOPIC,

@@ -1,6 +1,7 @@
 package com.filodot.noscroll.ui
 
 import com.filodot.noscroll.core.contracts.EmergencyRepository
+import com.filodot.noscroll.core.contracts.LearningRepository
 import com.filodot.noscroll.core.contracts.SettingsRepository
 import com.filodot.noscroll.core.contracts.TaskRepository
 import com.filodot.noscroll.core.contracts.TaskPresetRepository
@@ -9,10 +10,13 @@ import com.filodot.noscroll.core.model.DailyUsage
 import com.filodot.noscroll.core.model.GateCycle
 import com.filodot.noscroll.core.model.UserSettings
 import com.filodot.noscroll.core.testing.InMemoryEmergencyRepository
+import com.filodot.noscroll.core.testing.InMemoryLearningRepository
 import com.filodot.noscroll.core.testing.InMemorySettingsRepository
 import com.filodot.noscroll.core.testing.InMemoryTaskRepository
 import com.filodot.noscroll.core.testing.InMemoryTaskPresetRepository
 import com.filodot.noscroll.core.testing.InMemoryUsageRepository
+import com.filodot.noscroll.core.learning.content.StaticLearningCatalog
+import com.filodot.noscroll.core.learning.model.LearningCourseContent
 import com.filodot.noscroll.feature.dashboard.DashboardUiState
 import com.filodot.noscroll.feature.history.EmergencyHistoryUiState
 import com.filodot.noscroll.feature.settings.DetectorUiStatus
@@ -33,6 +37,7 @@ data class NoScrollAppGraph(
     val taskRepository: TaskRepository,
     val taskPresetRepository: TaskPresetRepository,
     val emergencyRepository: EmergencyRepository,
+    val learningRepository: LearningRepository,
     val dashboardState: DashboardUiState,
     val settingsState: SettingsUiState,
     val historyState: EmergencyHistoryUiState,
@@ -64,6 +69,20 @@ data class NoScrollAppGraph(
                 taskRepository = InMemoryTaskRepository(),
                 taskPresetRepository = InMemoryTaskPresetRepository(),
                 emergencyRepository = InMemoryEmergencyRepository(),
+                learningRepository = InMemoryLearningRepository(
+                    initialContent = listOf(
+                        LearningCourseContent(
+                            course = StaticLearningCatalog.pythonCourse,
+                            sources = emptyList(),
+                            curriculumNodes = listOf(StaticLearningCatalog.firstTopic),
+                            concepts = listOf(
+                                StaticLearningCatalog.variablesConcept,
+                                StaticLearningCatalog.expressionsConcept,
+                            ),
+                        ),
+                    ),
+                    initialLessons = listOf(StaticLearningCatalog.firstLesson),
+                ),
                 dashboardState = DashboardUiState(dateLabel = "14 июля"),
                 settingsState = SettingsUiState(
                     accessibilityStatus = SystemAccessUiStatus.ENABLED,
