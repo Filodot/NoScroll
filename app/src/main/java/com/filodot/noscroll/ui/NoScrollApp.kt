@@ -56,6 +56,7 @@ import com.filodot.noscroll.feature.history.EmergencyHistoryEffect
 import com.filodot.noscroll.feature.history.EmergencyHistoryItemUi
 import com.filodot.noscroll.feature.history.EmergencyHistoryRoute
 import com.filodot.noscroll.feature.history.EmergencyHistoryStateHolder
+import com.filodot.noscroll.feature.learning.LearningScreen
 import com.filodot.noscroll.feature.limits.LimitsEffect
 import com.filodot.noscroll.feature.limits.LimitsRoute
 import com.filodot.noscroll.feature.limits.LimitsStateHolder
@@ -538,6 +539,11 @@ fun NoScrollApp(
                     )
                 }
             }
+            composable(AppRoute.Learning.path) {
+                MainDestinationScaffold(navController, AppRoute.Learning) {
+                    LearningScreen()
+                }
+            }
             composable(AppRoute.Settings.path) {
                 MainDestinationScaffold(navController, AppRoute.Settings) {
                     SettingsScreen(
@@ -973,12 +979,13 @@ private sealed class AppRoute(
     data object Dashboard : AppRoute("dashboard", "Сегодня", "С")
     data object Limits : AppRoute("limits", "Ограничения", "О")
     data object Tasks : AppRoute("tasks", "Задания", "З")
+    data object Learning : AppRoute("learning", "Учёба", "У")
     data object Settings : AppRoute("settings", "Настройки", "Н")
     data object History : AppRoute("history", "История", "И")
     data object Emergency : AppRoute("emergency", "Emergency", "E")
 
     companion object {
-        val topLevel = listOf(Dashboard, Limits, Tasks, Settings)
+        val topLevel = listOf(Dashboard, Limits, Tasks, Learning, Settings)
     }
 }
 

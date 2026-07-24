@@ -30,6 +30,8 @@ class NoScrollAppNavigationTest {
         composeRule.onAllNodesWithText("Сегодня").assertCountEquals(2)
         composeRule.onNodeWithText("Ограничения").performClick()
         composeRule.onAllNodesWithText("Ограничения").assertCountEquals(2)
+        composeRule.onNodeWithText("Учёба").performClick()
+        composeRule.onNodeWithText("Обучение").assertIsDisplayed()
         composeRule.onNodeWithText("Настройки").performClick()
         composeRule.onAllNodesWithText("Настройки").assertCountEquals(2)
     }
