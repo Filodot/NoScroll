@@ -66,6 +66,19 @@ class AiLessonGeneratorTest {
     }
 
     @Test
+    fun `accepts SQL mini code only with public and hidden sandbox tests`() = runBlocking {
+        val gateway = QueueGateway(listOf(validSqlCodeLessonJson()))
+        val generator = AiLessonGenerator(gateway)
+
+        val lesson = generator.generate(topicCourse(), emptyList())
+
+        assertEquals(LessonPackageStatus.VALIDATED, lesson.status)
+        assertTrue(lesson.activities.any { it.content.kind == ActivityKind.MINI_CODE })
+        assertTrue(gateway.requests.single().userPrompt.contains("CREATE TABLE"))
+        assertTrue(gateway.requests.single().userPrompt.contains("скрытый"))
+    }
+
+    @Test
     fun `parses every declared activity content format`() {
         val samples = mapOf(
             ActivityKind.SINGLE_CHOICE to
@@ -237,6 +250,62 @@ class AiLessonGeneratorTest {
               "conceptTitles":["SELECT"],
               "sourceChunkIds":${ids(sourceChunkId)},
               "content":{"textWithBlank":"{{blank}} name FROM users","acceptedAnswers":["SELECT"],"caseSensitive":false}
+            }
+          ]
+        }
+    """.trimIndent()
+
+    private fun validSqlCodeLessonJson() = """
+        {
+          "title":"Практика SQL",
+          "introduction":"Короткий урок по безопасной выборке данных.",
+          "activities":[
+            {
+              "kind":"SINGLE_CHOICE",
+              "prompt":"Какой оператор читает строки?",
+              "explanation":"SELECT читает выбранные строки.",
+              "difficulty":"EASY",
+              "estimatedSeconds":40,
+              "conceptTitles":["SELECT"],
+              "sourceChunkIds":[],
+              "content":{"options":[{"id":"a","text":"SELECT"},{"id":"b","text":"DROP"}],"correctOptionId":"a"}
+            },
+            {
+              "kind":"MINI_CODE",
+              "prompt":"Напишите запрос, который вернёт активных пользователей по id.",
+              "explanation":"WHERE фильтрует строки, ORDER BY задаёт порядок.",
+              "difficulty":"MEDIUM",
+              "estimatedSeconds":120,
+              "conceptTitles":["SELECT"],
+              "sourceChunkIds":[],
+              "content":{
+                "language":"SQL",
+                "starterCode":"SELECT name FROM users",
+                "tests":[
+                  {
+                    "id":"public",
+                    "input":"CREATE TABLE users(id INTEGER, name TEXT, active INTEGER); INSERT INTO users VALUES(1, 'Ada', 1);",
+                    "expectedOutput":"Ada",
+                    "hidden":false
+                  },
+                  {
+                    "id":"hidden",
+                    "input":"CREATE TABLE users(id INTEGER, name TEXT, active INTEGER); INSERT INTO users VALUES(2, 'Linus', 0); INSERT INTO users VALUES(1, 'Grace', 1);",
+                    "expectedOutput":"Grace",
+                    "hidden":true
+                  }
+                ]
+              }
+            },
+            {
+              "kind":"TRUE_FALSE",
+              "prompt":"Оцените безопасность запроса.",
+              "explanation":"SELECT не изменяет строки.",
+              "difficulty":"EASY",
+              "estimatedSeconds":40,
+              "conceptTitles":["SELECT"],
+              "sourceChunkIds":[],
+              "content":{"statement":"SELECT изменяет таблицу","expected":false,"correction":"SELECT читает данные"}
             }
           ]
         }

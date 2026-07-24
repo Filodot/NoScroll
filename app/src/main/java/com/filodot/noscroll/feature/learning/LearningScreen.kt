@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -48,9 +49,12 @@ import com.filodot.noscroll.core.learning.ai.AiProviderId
 import com.filodot.noscroll.core.learning.generation.AiCurriculumGenerator
 import com.filodot.noscroll.core.learning.generation.AiLessonGenerator
 import com.filodot.noscroll.data.learning.AndroidLearningMaterialGateway
+import com.filodot.noscroll.data.learning.code.AndroidCodeExerciseEvaluator
 import com.filodot.noscroll.core.learning.model.CodeCompletionContent
 import com.filodot.noscroll.core.learning.model.CodeFixContent
+import com.filodot.noscroll.core.learning.model.CodeLanguage
 import com.filodot.noscroll.core.learning.model.CodeOutputContent
+import com.filodot.noscroll.core.learning.model.CodeTestCase
 import com.filodot.noscroll.core.learning.model.CourseStatus
 import com.filodot.noscroll.core.learning.model.EvidenceSelectionContent
 import com.filodot.noscroll.core.learning.model.FillBlankContent
@@ -79,6 +83,7 @@ fun LearningRoute(
     val materialGateway = remember(context) { AndroidLearningMaterialGateway(context) }
     val curriculumGenerator = remember(aiGateway) { aiGateway?.let(::AiCurriculumGenerator) }
     val lessonGenerator = remember(aiGateway) { aiGateway?.let(::AiLessonGenerator) }
+    val codeEvaluator = remember { AndroidCodeExerciseEvaluator() }
     val holder = remember(
         repository,
         scope,
@@ -86,6 +91,7 @@ fun LearningRoute(
         aiCredentials,
         curriculumGenerator,
         lessonGenerator,
+        codeEvaluator,
     ) {
         LearningStateHolder(
             repository = repository,
@@ -94,6 +100,7 @@ fun LearningRoute(
             aiCredentials = aiCredentials,
             curriculumGenerator = curriculumGenerator,
             lessonGenerator = lessonGenerator,
+            codeEvaluator = codeEvaluator,
         )
     }
     val state by holder.state.collectAsStateWithLifecycle()
@@ -110,6 +117,7 @@ fun LearningScreen(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
+            .imePadding()
             .padding(horizontal = 20.dp, vertical = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -654,10 +662,11 @@ private fun LessonPane(
             Button(
                 onClick = { onAction(LearningAction.CheckAnswer) },
                 enabled = state.answerStatus != LearningAnswerStatus.CORRECT &&
+                    !state.checkingAnswer &&
                     hasAnswer(state, activity),
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             ) {
-                Text("Проверить")
+                Text(if (state.checkingAnswer) "Проверяем…" else "Проверить")
             }
             when (state.answerStatus) {
                 LearningAnswerStatus.UNCHECKED -> Unit
@@ -770,11 +779,15 @@ private fun ActivityInput(
 
         is CodeFixContent -> {
             CodeBlock(content.brokenCode)
+            CodeSandboxNotice(content.language)
+            VisibleCodeTests(content.tests)
             TextAnswerInput(state, "Исправленный код", onAction, minLines = 4)
         }
 
         is MiniCodeContent -> {
             CodeBlock(content.starterCode)
+            CodeSandboxNotice(content.language)
+            VisibleCodeTests(content.tests)
             TextAnswerInput(state, "Ваш код", onAction, minLines = 4)
         }
 
@@ -915,6 +928,41 @@ private fun CodeBlock(code: String) {
             text = code,
             modifier = Modifier.padding(16.dp),
             fontFamily = FontFamily.Monospace,
+        )
+    }
+}
+
+@Composable
+private fun CodeSandboxNotice(language: CodeLanguage) {
+    Text(
+        text = when (language) {
+            CodeLanguage.PYTHON ->
+                "Безопасный Python-поднабор: одна функция и одно выражение return; " +
+                    "без импортов, циклов, файлов и сети."
+
+            CodeLanguage.SQL ->
+                "Выполняется в новой in-memory SQLite: разрешён один SELECT или WITH…SELECT; " +
+                    "изменение базы, файловые и системные команды запрещены."
+        },
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodySmall,
+    )
+}
+
+@Composable
+private fun VisibleCodeTests(tests: List<CodeTestCase>) {
+    val visible = tests.filterNot(CodeTestCase::hidden)
+    if (visible.isNotEmpty()) {
+        Text("Открытые тесты", style = MaterialTheme.typography.titleMedium)
+        visible.forEach { test ->
+            CodeBlock("input: ${test.input.ifBlank { "—" }}\noutput: ${test.expectedOutput}")
+        }
+    }
+    val hiddenCount = tests.count(CodeTestCase::hidden)
+    if (hiddenCount > 0) {
+        Text(
+            "Скрытых тестов: $hiddenCount",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

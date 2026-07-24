@@ -1,6 +1,9 @@
 package com.filodot.noscroll.feature.learning
 
 import com.filodot.noscroll.core.learning.content.StaticLearningCatalog
+import com.filodot.noscroll.core.learning.code.CodeEvaluation
+import com.filodot.noscroll.core.learning.code.CodeEvaluationStatus
+import com.filodot.noscroll.core.learning.code.CodeExerciseEvaluator
 import com.filodot.noscroll.core.learning.ai.AiProviderId
 import com.filodot.noscroll.core.learning.generation.CurriculumGenerator
 import com.filodot.noscroll.core.learning.generation.GeneratedCurriculum
@@ -17,6 +20,9 @@ import com.filodot.noscroll.core.learning.model.CurriculumNodeType
 import com.filodot.noscroll.core.learning.model.GroundingMode
 import com.filodot.noscroll.core.learning.model.LearningSourceType
 import com.filodot.noscroll.core.learning.model.LearningConcept
+import com.filodot.noscroll.core.learning.model.CodeLanguage
+import com.filodot.noscroll.core.learning.model.CodeTestCase
+import com.filodot.noscroll.core.learning.model.MiniCodeContent
 import com.filodot.noscroll.core.testing.InMemoryAiCredentialRepository
 import com.filodot.noscroll.core.testing.InMemoryLearningRepository
 import java.time.Instant
@@ -247,6 +253,51 @@ class LearningStateHolderTest {
         )
     }
 
+    @Test
+    fun `safe code evaluator can complete mini code activity`() = runTest {
+        val codeActivity = StaticLearningCatalog.firstLesson.activities.first().copy(
+            content = MiniCodeContent(
+                language = CodeLanguage.PYTHON,
+                starterCode = "def solve(x):\n    return x",
+                tests = listOf(
+                    CodeTestCase("public", """{"x":2}""", "4"),
+                    CodeTestCase("hidden", """{"x":5}""", "10", hidden = true),
+                ),
+            ),
+        )
+        val lesson = StaticLearningCatalog.firstLesson.copy(activities = listOf(codeActivity))
+        val repository = InMemoryLearningRepository(
+            initialContent = listOf(
+                LearningCourseContent(
+                    course = StaticLearningCatalog.pythonCourse,
+                    sources = emptyList(),
+                    curriculumNodes = listOf(StaticLearningCatalog.firstTopic),
+                    concepts = listOf(
+                        StaticLearningCatalog.variablesConcept,
+                        StaticLearningCatalog.expressionsConcept,
+                    ),
+                ),
+            ),
+            initialLessons = listOf(lesson),
+        )
+        val evaluator = CodeExerciseEvaluator { _, _ ->
+            CodeEvaluation(CodeEvaluationStatus.CORRECT)
+        }
+        val holder = holder(repository, codeEvaluator = evaluator)
+        runCurrent()
+        openFirstLesson(holder)
+
+        holder.dispatch(LearningAction.SetTextAnswer("def solve(x):\n    return x * 2"))
+        holder.dispatch(LearningAction.CheckAnswer)
+        runCurrent()
+
+        assertEquals(LearningAnswerStatus.CORRECT, holder.state.value.answerStatus)
+        assertEquals(
+            AttemptResult.CORRECT,
+            repository.getAttempts(StaticLearningCatalog.pythonCourse.id).single().result,
+        )
+    }
+
     private suspend fun kotlinx.coroutines.test.TestScope.openFirstLesson(
         holder: LearningStateHolder,
     ) {
@@ -262,6 +313,7 @@ class LearningStateHolderTest {
         aiCredentials: InMemoryAiCredentialRepository? = null,
         curriculumGenerator: CurriculumGenerator? = null,
         lessonGenerator: LessonGenerator? = null,
+        codeEvaluator: CodeExerciseEvaluator? = null,
     ) = LearningStateHolder(
         repository = repository,
         scope = backgroundScope,
@@ -269,6 +321,7 @@ class LearningStateHolderTest {
         aiCredentials = aiCredentials,
         curriculumGenerator = curriculumGenerator,
         lessonGenerator = lessonGenerator,
+        codeEvaluator = codeEvaluator,
         now = { now },
         zoneId = ZoneId.of("UTC"),
         idGenerator = { "attempt-${repository.hashCode()}-${holderIds++}" },

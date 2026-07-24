@@ -8,6 +8,8 @@ import com.filodot.noscroll.core.learning.ai.AiCredentialRepository
 import com.filodot.noscroll.core.learning.ai.AiProviderId
 import com.filodot.noscroll.core.learning.ai.AiProviderSettings
 import com.filodot.noscroll.core.learning.content.StaticLearningCatalog
+import com.filodot.noscroll.core.learning.code.CodeEvaluationStatus
+import com.filodot.noscroll.core.learning.code.CodeExerciseEvaluator
 import com.filodot.noscroll.core.learning.generation.CurriculumGenerationException
 import com.filodot.noscroll.core.learning.generation.CurriculumGenerator
 import com.filodot.noscroll.core.learning.generation.LessonGenerationException
@@ -95,6 +97,7 @@ data class LearningUiState(
     val planDirty: Boolean = false,
     val lastPlanProviderLabel: String? = null,
     val generatingLesson: Boolean = false,
+    val checkingAnswer: Boolean = false,
     val selectedCourse: LearningCourseContent? = null,
     val selectedCourseMasteryPercent: Int = 0,
     val readyLessons: Int = 0,
@@ -160,6 +163,7 @@ class LearningStateHolder(
     private val aiCredentials: AiCredentialRepository? = null,
     private val curriculumGenerator: CurriculumGenerator? = null,
     private val lessonGenerator: LessonGenerator? = null,
+    private val codeEvaluator: CodeExerciseEvaluator? = null,
     private val materialProcessor: LearningMaterialProcessor = LearningMaterialProcessor(),
     private val answerChecker: LocalLearningAnswerChecker = LocalLearningAnswerChecker(),
     private val masteryPolicy: MasteryPolicy = MasteryPolicy(),
@@ -825,33 +829,84 @@ class LearningStateHolder(
 
     private suspend fun checkAnswer() {
         val state = mutableState.value
-        if (state.answerStatus == LearningAnswerStatus.CORRECT) return
+        if (state.answerStatus == LearningAnswerStatus.CORRECT || state.checkingAnswer) return
         val activity = state.currentActivity ?: return
         val answer = state.answerFor(activity.content) ?: return
-        when (answerChecker.evaluate(activity.content, answer)) {
-            AnswerEvaluation.CORRECT -> {
+        mutableState.update { it.copy(checkingAnswer = true, message = null) }
+        try {
+            when (answerChecker.evaluate(activity.content, answer)) {
+                AnswerEvaluation.CORRECT -> {
+                    recordAttempt(activity, AttemptResult.CORRECT)
+                    mutableState.update {
+                        it.copy(answerStatus = LearningAnswerStatus.CORRECT, message = null)
+                    }
+                }
+
+                AnswerEvaluation.INCORRECT -> {
+                    recordAttempt(activity, AttemptResult.INCORRECT)
+                    mutableState.update {
+                        it.copy(answerStatus = LearningAnswerStatus.INCORRECT, message = null)
+                    }
+                }
+
+                AnswerEvaluation.REQUIRES_EXTERNAL_EVALUATION ->
+                    evaluateExternalFormat(activity, answer)
+
+                AnswerEvaluation.INCOMPATIBLE_ANSWER -> mutableState.update {
+                    it.copy(message = "Ответ заполнен не полностью")
+                }
+            }
+        } finally {
+            mutableState.update { it.copy(checkingAnswer = false) }
+        }
+    }
+
+    private suspend fun evaluateExternalFormat(
+        activity: LearningActivity,
+        answer: LearningAnswer,
+    ) {
+        val submission = (answer as? LearningAnswer.Text)?.value
+        val evaluator = codeEvaluator
+        if (submission == null || evaluator == null) {
+            mutableState.update {
+                it.copy(
+                    answerStatus = LearningAnswerStatus.REQUIRES_EXTERNAL,
+                    message = "Для этого формата пока нет безопасной локальной проверки.",
+                )
+            }
+            return
+        }
+        val evaluation = evaluator.evaluate(activity.content, submission)
+        when (evaluation.status) {
+            CodeEvaluationStatus.CORRECT -> {
                 recordAttempt(activity, AttemptResult.CORRECT)
                 mutableState.update {
                     it.copy(answerStatus = LearningAnswerStatus.CORRECT, message = null)
                 }
             }
 
-            AnswerEvaluation.INCORRECT -> {
+            CodeEvaluationStatus.INCORRECT -> {
                 recordAttempt(activity, AttemptResult.INCORRECT)
                 mutableState.update {
-                    it.copy(answerStatus = LearningAnswerStatus.INCORRECT, message = null)
+                    it.copy(
+                        answerStatus = LearningAnswerStatus.INCORRECT,
+                        message = evaluation.message,
+                    )
                 }
             }
 
-            AnswerEvaluation.REQUIRES_EXTERNAL_EVALUATION -> mutableState.update {
+            CodeEvaluationStatus.INVALID_SUBMISSION -> mutableState.update {
                 it.copy(
-                    answerStatus = LearningAnswerStatus.REQUIRES_EXTERNAL,
-                    message = "Для этого формата нужна безопасная AI-проверка или code sandbox.",
+                    answerStatus = LearningAnswerStatus.INCORRECT,
+                    message = evaluation.message ?: "Код не удалось выполнить",
                 )
             }
 
-            AnswerEvaluation.INCOMPATIBLE_ANSWER -> mutableState.update {
-                it.copy(message = "Ответ заполнен не полностью")
+            CodeEvaluationStatus.UNSUPPORTED -> mutableState.update {
+                it.copy(
+                    answerStatus = LearningAnswerStatus.REQUIRES_EXTERNAL,
+                    message = evaluation.message ?: "Формат пока не поддерживается локально",
+                )
             }
         }
     }

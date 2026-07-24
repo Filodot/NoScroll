@@ -81,7 +81,7 @@
 
 - code-output без исполнения;
 - SQL в изолированной in-memory SQLite с read-only ограничением;
-- Python executor с лимитом времени и памяти;
+- ограниченный Python expression sandbox без системного доступа;
 - открытые/скрытые тесты;
 - запрет файловой системы, сети и Android API.
 

@@ -142,7 +142,7 @@ class AiLessonGenerator(
                     ),
                     generatedAt = generatedAt,
                 )
-                val issues = semanticIssues(lesson, targetConcepts, chunks)
+                val issues = semanticIssues(content, lesson, targetConcepts, chunks)
                 if (issues.isEmpty()) return lesson
                 feedback = issues
             } catch (error: Exception) {
@@ -228,6 +228,7 @@ class AiLessonGenerator(
     }
 
     private fun semanticIssues(
+        content: LearningCourseContent,
         lesson: LessonPackage,
         targetConcepts: List<LearningConcept>,
         chunks: List<LearningSourceChunk>,
@@ -243,6 +244,20 @@ class AiLessonGenerator(
         }
         if (lesson.activities.any { it.content.kind !in AUTO_CHECKED_ACTIVITY_KINDS }) {
             add("Используйте только форматы, которые приложение умеет проверить автоматически")
+        }
+        val expectedCodeLanguage = detectCodeLanguage(content)
+        lesson.activities.forEach { activity ->
+            when (val activityContent = activity.content) {
+                is CodeFixContent -> addAll(
+                    codeActivityIssues(activityContent.language, activityContent.tests, expectedCodeLanguage),
+                )
+
+                is MiniCodeContent -> addAll(
+                    codeActivityIssues(activityContent.language, activityContent.tests, expectedCodeLanguage),
+                )
+
+                else -> Unit
+            }
         }
         val covered = lesson.activities.flatMapTo(mutableSetOf()) { it.conceptIds }
         val required = targetConcepts.mapTo(mutableSetOf(), LearningConcept::id)
@@ -474,7 +489,11 @@ private fun lessonPrompt(
     appendLine("Язык ответа: ${content.course.languageTag}")
     appendLine("Режим источников: ${content.course.groundingMode}")
     appendLine("Создай 3–5 заданий минимум двух разных форматов.")
-    appendLine("Допустимые kind: ${AUTO_CHECKED_ACTIVITY_KINDS.joinToString()}")
+    val codeLanguage = detectCodeLanguage(content)
+    val allowedKinds = AUTO_CHECKED_ACTIVITY_KINDS.filter {
+        codeLanguage != null || (it != ActivityKind.CODE_FIX && it != ActivityKind.MINI_CODE)
+    }
+    appendLine("Допустимые kind: ${allowedKinds.joinToString()}")
     appendLine("difficulty: EASY, MEDIUM или HARD. Длительность одного задания 15–300 секунд.")
     appendLine("Проверяемые понятия:")
     concepts.forEach { concept ->
@@ -488,10 +507,28 @@ private fun lessonPrompt(
             appendLine("<source chunkId=\"${chunk.id}\">${chunk.text}</source>")
         }
     }
-    val codeLanguage = detectCodeLanguage(content)
     if (codeLanguage != null) {
-        appendLine("Курс связан с кодом: уместно включить формат CODE_* или MINI_CODE.")
+        appendLine("Курс связан с кодом: включи хотя бы один формат CODE_* или MINI_CODE.")
         appendLine("Разрешённый язык кода: $codeLanguage.")
+        appendLine("Для CODE_FIX и MINI_CODE нужны минимум два теста: открытый и скрытый.")
+        if (codeLanguage == CodeLanguage.PYTHON) {
+            appendLine(
+                "Python sandbox принимает одну функцию def с одной строкой return. " +
+                    "Разрешены числа, строки, boolean, + - * / // % **, сравнения, " +
+                    "and/or/not и len/abs/round.",
+            )
+            appendLine(
+                "input каждого Python-теста — JSON object/array со scalar аргументами функции.",
+            )
+        } else {
+            appendLine(
+                "Ответ SQL — один SELECT или WITH…SELECT. input теста содержит только " +
+                    "CREATE TABLE и INSERT INTO, разделённые точкой с запятой.",
+            )
+            appendLine(
+                "expectedOutput SQL: строки через \\n, колонки через |, NULL как NULL.",
+            )
+        }
     }
     appendLine("Для нерелевантных полей content ничего не добавляй: выбери точную схему kind.")
     if (feedback.isNotEmpty()) {
@@ -511,6 +548,44 @@ private fun detectCodeLanguage(content: LearningCourseContent): CodeLanguage? {
         "python" in haystack || "питон" in haystack -> CodeLanguage.PYTHON
         "sql" in haystack -> CodeLanguage.SQL
         else -> null
+    }
+}
+
+private fun codeActivityIssues(
+    language: CodeLanguage,
+    tests: List<CodeTestCase>,
+    expectedLanguage: CodeLanguage?,
+): List<String> = buildList {
+    if (expectedLanguage == null || language != expectedLanguage) {
+        add("Язык code-задания не совпадает с темой курса")
+    }
+    if (tests.size < 2 || tests.none { it.hidden } || tests.none { !it.hidden }) {
+        add("Code-заданию нужны минимум один открытый и один скрытый тест")
+    }
+    when (language) {
+        CodeLanguage.PYTHON -> if (
+            tests.any { test ->
+                test.input.isBlank() ||
+                    runCatching { JSON.parseToJsonElement(test.input) }.isFailure
+            }
+        ) {
+            add("input Python-теста должен быть JSON object/array/scalar")
+        }
+
+        CodeLanguage.SQL -> if (
+            tests.any { test ->
+                test.input.split(';')
+                    .map(String::trim)
+                    .filter(String::isNotEmpty)
+                    .any { statement ->
+                        val upper = statement.uppercase(Locale.ROOT)
+                        !upper.startsWith("CREATE TABLE ") &&
+                            !upper.startsWith("INSERT INTO ")
+                    }
+            }
+        ) {
+            add("SQL setup допускает только CREATE TABLE и INSERT INTO")
+        }
     }
 }
 
@@ -587,9 +662,7 @@ private const val LESSON_SYSTEM_PROMPT =
         "объяснение — помогать учиться, а не просто повторять ответ."
 
 private val AUTO_CHECKED_ACTIVITY_KINDS = ActivityKind.entries.filterNot {
-    it == ActivityKind.CODE_FIX ||
-        it == ActivityKind.MINI_CODE ||
-        it == ActivityKind.TEACH_BACK
+    it == ActivityKind.TEACH_BACK
 }
 
 private val STRING = buildJsonObject { put("type", "string") }

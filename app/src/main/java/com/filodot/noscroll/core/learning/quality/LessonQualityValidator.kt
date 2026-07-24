@@ -296,7 +296,14 @@ private fun String.countOccurrences(marker: String): Int =
     windowed(marker.length).count { it == marker }
 
 private fun List<com.filodot.noscroll.core.learning.model.CodeTestCase>.anyInvalid(): Boolean =
-    any { it.id.isBlank() || it.expectedOutput.isBlank() } ||
+    size > MAX_CODE_TESTS ||
+        any {
+            it.id.isBlank() ||
+                it.id.length > MAX_CODE_TEST_ID_LENGTH ||
+                it.input.length > MAX_CODE_TEST_INPUT_LENGTH ||
+                it.expectedOutput.isBlank() ||
+                it.expectedOutput.length > MAX_CODE_TEST_OUTPUT_LENGTH
+        } ||
         map { it.id }.toSet().size != size
 
 private const val BLANK_MARKER = "{{blank}}"
@@ -307,3 +314,7 @@ private const val MIN_ACTIVITY_SECONDS = 15
 private const val MAX_ACTIVITY_SECONDS = 300
 private const val MIN_LESSON_SECONDS = 30
 private const val MAX_LESSON_SECONDS = 600
+private const val MAX_CODE_TESTS = 20
+private const val MAX_CODE_TEST_ID_LENGTH = 80
+private const val MAX_CODE_TEST_INPUT_LENGTH = 8_000
+private const val MAX_CODE_TEST_OUTPUT_LENGTH = 10_000

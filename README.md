@@ -46,6 +46,7 @@ APK после успешной сборки находятся в `app/build/ou
 16. [Генерация программы](docs/16-ai-curriculum-generation.md) — проверяемый редактируемый план курса.
 17. [Генерация уроков](docs/17-ai-lesson-generation.md) — строгие схемы, quality gate и офлайн-пакеты.
 18. [Учебные задания в блокировке](docs/18-learning-gate-integration.md) — выбор курсов, один ответ, прогресс и безопасный fallback.
+19. [Безопасные Python/SQL-задания](docs/19-safe-code-exercises.md) — ограниченный Python subset, in-memory SQLite и скрытые тесты.
 
 ## Зафиксированная конфигурация MVP
 
