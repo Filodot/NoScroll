@@ -43,6 +43,19 @@ data class LearningSource(
     val importedAt: Instant,
 )
 
+data class LearningSourceChunk(
+    val id: String,
+    val sourceId: String,
+    val courseId: String,
+    val position: Int,
+    val text: String,
+    val pageNumber: Int? = null,
+    val sectionTitle: String? = null,
+    val characterStart: Int,
+    val characterEnd: Int,
+    val estimatedTokens: Int,
+)
+
 data class SourceCitation(
     val sourceId: String,
     val chunkId: String,
@@ -66,6 +79,7 @@ data class LearningCourse(
 data class LearningCourseContent(
     val course: LearningCourse,
     val sources: List<LearningSource>,
+    val sourceChunks: List<LearningSourceChunk> = emptyList(),
     val curriculumNodes: List<CurriculumNode>,
     val concepts: List<LearningConcept>,
 )

@@ -15,6 +15,7 @@ import androidx.room.migration.Migration
         CustomTaskPresetEntity::class,
         LearningCourseEntity::class,
         LearningSourceEntity::class,
+        LearningSourceChunkEntity::class,
         CurriculumNodeEntity::class,
         LearningConceptEntity::class,
         LessonPackageEntity::class,
@@ -44,7 +45,7 @@ abstract class NoScrollDatabase : RoomDatabase() {
 
     companion object {
         const val DATABASE_NAME = "noscroll.db"
-        const val VERSION = 6
+        const val VERSION = 7
 
         val MIGRATION_1_2 = Migration(1, 2) { database ->
             database.execSQL(
@@ -123,12 +124,17 @@ abstract class NoScrollDatabase : RoomDatabase() {
             LEARNING_TABLE_STATEMENTS.forEach(database::execSQL)
         }
 
+        val MIGRATION_6_7 = Migration(6, 7) { database ->
+            database.execSQL(LEARNING_SOURCE_CHUNKS_STATEMENT)
+        }
+
         val ALL_MIGRATIONS = arrayOf(
             MIGRATION_1_2,
             MIGRATION_2_3,
             MIGRATION_3_4,
             MIGRATION_4_5,
             MIGRATION_5_6,
+            MIGRATION_6_7,
         )
 
         fun build(context: Context, name: String = DATABASE_NAME): NoScrollDatabase =
@@ -147,6 +153,7 @@ abstract class NoScrollDatabase : RoomDatabase() {
                 "id TEXT NOT NULL, course_id TEXT NOT NULL, title TEXT NOT NULL, " +
                 "source_type TEXT NOT NULL, content_hash TEXT, " +
                 "imported_at_epoch_millis INTEGER NOT NULL, PRIMARY KEY(id))",
+            LEARNING_SOURCE_CHUNKS_STATEMENT,
             "CREATE TABLE IF NOT EXISTS curriculum_nodes (" +
                 "id TEXT NOT NULL, course_id TEXT NOT NULL, parent_id TEXT, node_type TEXT NOT NULL, " +
                 "title TEXT NOT NULL, description TEXT NOT NULL, position INTEGER NOT NULL, " +
@@ -185,5 +192,13 @@ abstract class NoScrollDatabase : RoomDatabase() {
                 "last_attempt_at_epoch_millis INTEGER, next_review_at_epoch_millis INTEGER, " +
                 "PRIMARY KEY(concept_id))",
         )
+
+        private const val LEARNING_SOURCE_CHUNKS_STATEMENT =
+            "CREATE TABLE IF NOT EXISTS learning_source_chunks (" +
+                "id TEXT NOT NULL, source_id TEXT NOT NULL, course_id TEXT NOT NULL, " +
+                "position INTEGER NOT NULL, text TEXT NOT NULL, page_number INTEGER, " +
+                "section_title TEXT, character_start INTEGER NOT NULL, " +
+                "character_end INTEGER NOT NULL, estimated_tokens INTEGER NOT NULL, " +
+                "PRIMARY KEY(id))"
     }
 }

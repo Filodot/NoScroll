@@ -5,15 +5,23 @@ import com.filodot.noscroll.core.learning.answer.AnswerEvaluation
 import com.filodot.noscroll.core.learning.answer.LearningAnswer
 import com.filodot.noscroll.core.learning.answer.LocalLearningAnswerChecker
 import com.filodot.noscroll.core.learning.content.StaticLearningCatalog
+import com.filodot.noscroll.core.learning.importing.LearningMaterialGateway
+import com.filodot.noscroll.core.learning.importing.LearningMaterialImportException
+import com.filodot.noscroll.core.learning.importing.LearningMaterialProcessor
 import com.filodot.noscroll.core.learning.model.ActivityContent
 import com.filodot.noscroll.core.learning.model.AttemptResult
 import com.filodot.noscroll.core.learning.model.ConceptMastery
+import com.filodot.noscroll.core.learning.model.CourseOrigin
+import com.filodot.noscroll.core.learning.model.CourseStatus
 import com.filodot.noscroll.core.learning.model.EvidenceSelectionContent
 import com.filodot.noscroll.core.learning.model.FillBlankContent
 import com.filodot.noscroll.core.learning.model.LearningActivity
 import com.filodot.noscroll.core.learning.model.LearningAttempt
 import com.filodot.noscroll.core.learning.model.LearningCourse
 import com.filodot.noscroll.core.learning.model.LearningCourseContent
+import com.filodot.noscroll.core.learning.model.LearningSource
+import com.filodot.noscroll.core.learning.model.LearningSourceType
+import com.filodot.noscroll.core.learning.model.GroundingMode
 import com.filodot.noscroll.core.learning.model.LessonPackage
 import com.filodot.noscroll.core.learning.model.MatchingContent
 import com.filodot.noscroll.core.learning.model.MultipleChoiceContent
@@ -37,6 +45,7 @@ import kotlinx.coroutines.launch
 
 enum class LearningPane {
     COURSES,
+    CREATE,
     COURSE,
     LESSON,
     COMPLETED,
@@ -62,6 +71,9 @@ data class LearningUiState(
     val loading: Boolean = true,
     val pane: LearningPane = LearningPane.COURSES,
     val courses: List<LearningCourseCardUi> = emptyList(),
+    val createTitle: String = "",
+    val createTopic: String = "",
+    val importingMaterial: Boolean = false,
     val selectedCourse: LearningCourseContent? = null,
     val selectedCourseMasteryPercent: Int = 0,
     val readyLessons: Int = 0,
@@ -80,6 +92,12 @@ data class LearningUiState(
 }
 
 sealed interface LearningAction {
+    data object StartCreateCourse : LearningAction
+    data object CancelCreateCourse : LearningAction
+    data class SetCreateTitle(val value: String) : LearningAction
+    data class SetCreateTopic(val value: String) : LearningAction
+    data object CreateTopicCourse : LearningAction
+    data class ImportMaterial(val reference: String) : LearningAction
     data object CreateDemoCourse : LearningAction
     data class OpenCourse(val courseId: String) : LearningAction
     data object BackToCourses : LearningAction
@@ -98,6 +116,8 @@ sealed interface LearningAction {
 class LearningStateHolder(
     private val repository: LearningRepository,
     private val scope: CoroutineScope,
+    private val materialGateway: LearningMaterialGateway? = null,
+    private val materialProcessor: LearningMaterialProcessor = LearningMaterialProcessor(),
     private val answerChecker: LocalLearningAnswerChecker = LocalLearningAnswerChecker(),
     private val masteryPolicy: MasteryPolicy = MasteryPolicy(),
     private val now: () -> Instant = Instant::now,
@@ -131,6 +151,34 @@ class LearningStateHolder(
 
     fun dispatch(action: LearningAction) {
         when (action) {
+            LearningAction.StartCreateCourse -> mutableState.update {
+                it.copy(
+                    pane = LearningPane.CREATE,
+                    createTitle = "",
+                    createTopic = "",
+                    importingMaterial = false,
+                    message = null,
+                )
+            }
+
+            LearningAction.CancelCreateCourse -> mutableState.update {
+                it.copy(
+                    pane = LearningPane.COURSES,
+                    importingMaterial = false,
+                    message = null,
+                )
+            }
+
+            is LearningAction.SetCreateTitle -> mutableState.update {
+                it.copy(createTitle = action.value.take(MAX_COURSE_TITLE_LENGTH))
+            }
+
+            is LearningAction.SetCreateTopic -> mutableState.update {
+                it.copy(createTopic = action.value.take(MAX_TOPIC_LENGTH))
+            }
+
+            LearningAction.CreateTopicCourse -> scope.launch { createTopicCourse() }
+            is LearningAction.ImportMaterial -> scope.launch { importMaterial(action.reference) }
             LearningAction.CreateDemoCourse -> scope.launch { createDemoCourse() }
             is LearningAction.OpenCourse -> scope.launch { openCourse(action.courseId) }
             LearningAction.BackToCourses -> mutableState.update {
@@ -170,6 +218,98 @@ class LearningStateHolder(
         }
     }
 
+    private suspend fun createTopicCourse() {
+        val state = mutableState.value
+        val topic = state.createTopic.trim()
+        if (topic.length < MIN_TOPIC_LENGTH) {
+            mutableState.update { it.copy(message = "Опишите тему хотя бы в нескольких словах") }
+            return
+        }
+        val timestamp = now()
+        val courseId = idGenerator()
+        val title = state.createTitle.trim().ifBlank { topic.take(60) }
+        val source = LearningSource(
+            id = idGenerator(),
+            courseId = courseId,
+            title = topic,
+            type = LearningSourceType.TOPIC,
+            contentHash = null,
+            importedAt = timestamp,
+        )
+        repository.saveCourseContent(
+            LearningCourseContent(
+                course = LearningCourse(
+                    id = courseId,
+                    title = title,
+                    description = "Курс по теме: $topic",
+                    origin = CourseOrigin.TOPIC,
+                    groundingMode = GroundingMode.AI_KNOWLEDGE,
+                    status = CourseStatus.DRAFT,
+                    createdAt = timestamp,
+                    updatedAt = timestamp,
+                ),
+                sources = listOf(source),
+                curriculumNodes = emptyList(),
+                concepts = emptyList(),
+            ),
+        )
+        openCourse(courseId)
+    }
+
+    private suspend fun importMaterial(reference: String) {
+        val gateway = materialGateway
+        if (gateway == null) {
+            mutableState.update { it.copy(message = "Импорт файлов недоступен в этом окружении") }
+            return
+        }
+        mutableState.update { it.copy(importingMaterial = true, message = null) }
+        try {
+            val document = gateway.read(reference)
+            val timestamp = now()
+            val courseId = idGenerator()
+            val sourceId = idGenerator()
+            val prepared = materialProcessor.prepare(
+                courseId = courseId,
+                sourceId = sourceId,
+                document = document,
+                importedAt = timestamp,
+            )
+            val title = mutableState.value.createTitle.trim()
+                .ifBlank { document.title.substringBeforeLast('.').ifBlank { document.title } }
+            repository.saveCourseContent(
+                LearningCourseContent(
+                    course = LearningCourse(
+                        id = courseId,
+                        title = title,
+                        description = "${prepared.characterCount} знаков · " +
+                            "${prepared.chunks.size} фрагментов",
+                        origin = CourseOrigin.MATERIAL,
+                        groundingMode = GroundingMode.SOURCE_REQUIRED,
+                        status = CourseStatus.DRAFT,
+                        createdAt = timestamp,
+                        updatedAt = timestamp,
+                    ),
+                    sources = listOf(prepared.source),
+                    sourceChunks = prepared.chunks,
+                    curriculumNodes = emptyList(),
+                    concepts = emptyList(),
+                ),
+            )
+            openCourse(courseId)
+        } catch (error: LearningMaterialImportException) {
+            mutableState.update {
+                it.copy(importingMaterial = false, message = error.message ?: "Не удалось импортировать")
+            }
+        } catch (_: Exception) {
+            mutableState.update {
+                it.copy(
+                    importingMaterial = false,
+                    message = "Импорт не завершён. Проверьте файл и попробуйте снова.",
+                )
+            }
+        }
+    }
+
     private suspend fun LearningCourse.toCard(): LearningCourseCardUi {
         val content = repository.getCourseContent(id)
         val mastery = repository.getMastery(id)
@@ -204,6 +344,7 @@ class LearningStateHolder(
         mutableState.update {
             it.copy(
                 loading = false,
+                importingMaterial = false,
                 pane = LearningPane.COURSE,
                 selectedCourse = content,
                 selectedCourseMasteryPercent = masteryPercent(content.concepts, mastery),
@@ -460,3 +601,6 @@ private fun demoCourseContent(): LearningCourseContent = LearningCourseContent(
 )
 
 private const val MAX_TEXT_ANSWER_LENGTH = 4_000
+private const val MAX_COURSE_TITLE_LENGTH = 100
+private const val MAX_TOPIC_LENGTH = 2_000
+private const val MIN_TOPIC_LENGTH = 8

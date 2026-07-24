@@ -81,6 +81,10 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.pdfbox.android) {
+        // Password-protected PDFs are rejected; crypto providers would add several unused MB.
+        exclude(group = "org.bouncycastle")
+    }
 
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.room.runtime)

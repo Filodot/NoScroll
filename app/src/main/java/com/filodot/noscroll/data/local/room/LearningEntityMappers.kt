@@ -14,6 +14,7 @@ import com.filodot.noscroll.core.learning.model.LearningAttempt
 import com.filodot.noscroll.core.learning.model.LearningConcept
 import com.filodot.noscroll.core.learning.model.LearningCourse
 import com.filodot.noscroll.core.learning.model.LearningSource
+import com.filodot.noscroll.core.learning.model.LearningSourceChunk
 import com.filodot.noscroll.core.learning.model.LearningSourceType
 import com.filodot.noscroll.core.learning.model.LessonPackage
 import com.filodot.noscroll.core.learning.model.LessonPackageStatus
@@ -65,6 +66,32 @@ fun LearningSourceEntity.toModel(): LearningSource = LearningSource(
     type = enumValueOf<LearningSourceType>(sourceType),
     contentHash = contentHash,
     importedAt = Instant.ofEpochMilli(importedAtEpochMillis),
+)
+
+fun LearningSourceChunk.toEntity(): LearningSourceChunkEntity = LearningSourceChunkEntity(
+    id = id,
+    sourceId = sourceId,
+    courseId = courseId,
+    position = position,
+    text = text,
+    pageNumber = pageNumber,
+    sectionTitle = sectionTitle,
+    characterStart = characterStart,
+    characterEnd = characterEnd,
+    estimatedTokens = estimatedTokens,
+)
+
+fun LearningSourceChunkEntity.toModel(): LearningSourceChunk = LearningSourceChunk(
+    id = id,
+    sourceId = sourceId,
+    courseId = courseId,
+    position = position,
+    text = text,
+    pageNumber = pageNumber,
+    sectionTitle = sectionTitle,
+    characterStart = characterStart,
+    characterEnd = characterEnd,
+    estimatedTokens = estimatedTokens,
 )
 
 fun CurriculumNode.toEntity(): CurriculumNodeEntity = CurriculumNodeEntity(

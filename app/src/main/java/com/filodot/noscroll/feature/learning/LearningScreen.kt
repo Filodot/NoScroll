@@ -1,5 +1,7 @@
 package com.filodot.noscroll.feature.learning
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -30,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -37,6 +40,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.filodot.noscroll.core.contracts.LearningRepository
+import com.filodot.noscroll.data.learning.AndroidLearningMaterialGateway
 import com.filodot.noscroll.core.learning.model.CodeCompletionContent
 import com.filodot.noscroll.core.learning.model.CodeFixContent
 import com.filodot.noscroll.core.learning.model.CodeOutputContent
@@ -61,8 +65,14 @@ fun LearningRoute(
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
-    val holder = remember(repository, scope) {
-        LearningStateHolder(repository = repository, scope = scope)
+    val context = LocalContext.current
+    val materialGateway = remember(context) { AndroidLearningMaterialGateway(context) }
+    val holder = remember(repository, scope, materialGateway) {
+        LearningStateHolder(
+            repository = repository,
+            scope = scope,
+            materialGateway = materialGateway,
+        )
     }
     val state by holder.state.collectAsStateWithLifecycle()
     LearningScreen(state = state, onAction = holder::dispatch, modifier = modifier)
@@ -86,6 +96,7 @@ fun LearningScreen(
         } else {
             when (state.pane) {
                 LearningPane.COURSES -> CoursesPane(state, onAction)
+                LearningPane.CREATE -> CreateCoursePane(state, onAction)
                 LearningPane.COURSE -> CoursePane(state, onAction)
                 LearningPane.LESSON -> LessonPane(state, onAction)
                 LearningPane.COMPLETED -> CompletedPane(state, onAction)
@@ -124,6 +135,12 @@ private fun CoursesPane(
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         style = MaterialTheme.typography.bodyLarge,
     )
+    Button(
+        onClick = { onAction(LearningAction.StartCreateCourse) },
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+    ) {
+        Text("Создать свой курс")
+    }
     if (state.courses.isEmpty()) {
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(
@@ -131,12 +148,12 @@ private fun CoursesPane(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text("Курсов пока нет", style = MaterialTheme.typography.titleLarge)
-                Text("Добавьте демонстрационный курс, чтобы проверить локальный движок.")
-                Button(
+                Text("Начните с темы или загрузите свой учебный материал.")
+                OutlinedButton(
                     onClick = { onAction(LearningAction.CreateDemoCourse) },
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 ) {
-                    Text("Добавить демо-курс Python")
+                    Text("Посмотреть демо-курс Python")
                 }
             }
         }
@@ -180,6 +197,97 @@ private fun CoursesPane(
 }
 
 @Composable
+private fun CreateCoursePane(
+    state: LearningUiState,
+    onAction: (LearningAction) -> Unit,
+) {
+    val filePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        uri?.let { onAction(LearningAction.ImportMaterial(it.toString())) }
+    }
+    TextButton(
+        onClick = { onAction(LearningAction.CancelCreateCourse) },
+        enabled = !state.importingMaterial,
+    ) {
+        Text("← Отмена")
+    }
+    Heading("Новый курс")
+    Text(
+        "Укажите тему или загрузите материал. План можно будет проверить и изменить до начала.",
+        style = MaterialTheme.typography.bodyLarge,
+    )
+    OutlinedTextField(
+        value = state.createTitle,
+        onValueChange = { onAction(LearningAction.SetCreateTitle(it)) },
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text("Название курса (необязательно)") },
+        enabled = !state.importingMaterial,
+        singleLine = true,
+    )
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("По теме", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "Нейросеть составит редактируемый план. Факты не будут привязаны к источнику.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = state.createTopic,
+                onValueChange = { onAction(LearningAction.SetCreateTopic(it)) },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Например: основы SQL для аналитика") },
+                enabled = !state.importingMaterial,
+                minLines = 2,
+                maxLines = 5,
+            )
+            Button(
+                onClick = { onAction(LearningAction.CreateTopicCourse) },
+                enabled = !state.importingMaterial,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) {
+                Text("Создать по теме")
+            }
+        }
+    }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("По своему материалу", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "PDF, DOCX, TXT или Markdown до 20 МБ. Текст обрабатывается на телефоне.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (state.importingMaterial) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                Text("Извлекаем и подготавливаем материал…")
+            } else {
+                OutlinedButton(
+                    onClick = {
+                        filePicker.launch(
+                            arrayOf(
+                                "application/pdf",
+                                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                "text/plain",
+                                "text/markdown",
+                            ),
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                ) {
+                    Text("Выбрать файл")
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun CoursePane(
     state: LearningUiState,
     onAction: (LearningAction) -> Unit,
@@ -217,12 +325,33 @@ private fun CoursePane(
         }
     }
     Heading("План курса", small = true)
-    content.curriculumNodes.forEach { node ->
+    if (content.curriculumNodes.isEmpty()) {
         Card(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(node.title, style = MaterialTheme.typography.titleMedium)
-                Text(node.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("${node.estimatedMinutes} мин · ${node.conceptIds.size} понятия")
+            Column(
+                Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text("Материал подготовлен", style = MaterialTheme.typography.titleMedium)
+                if (content.sources.isNotEmpty()) {
+                    Text(
+                        "${content.sources.size} источников · " +
+                            "${content.sourceChunks.size} фрагментов",
+                    )
+                }
+                Text(
+                    "Редактируемый план появится после подключения генерации.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    } else {
+        content.curriculumNodes.forEach { node ->
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(node.title, style = MaterialTheme.typography.titleMedium)
+                    Text(node.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${node.estimatedMinutes} мин · ${node.conceptIds.size} понятия")
+                }
             }
         }
     }

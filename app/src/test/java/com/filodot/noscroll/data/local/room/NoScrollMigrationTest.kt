@@ -28,7 +28,7 @@ class NoScrollMigrationTest {
     }
 
     @Test
-    fun migrationOneToSixPreservesUsageAndInitializesNewColumns() = runBlocking {
+    fun migrationOneToSevenPreservesUsageAndInitializesNewColumns() = runBlocking {
         createVersionOneDatabase()
 
         val database = Room.databaseBuilder(context, NoScrollDatabase::class.java, databaseName)
@@ -48,7 +48,7 @@ class NoScrollMigrationTest {
     }
 
     @Test
-    fun migrationTwoToSixPreservesPendingGateAndAddsAllDefaults() = runBlocking {
+    fun migrationTwoToSevenPreservesPendingGateAndAddsAllDefaults() = runBlocking {
         createVersionTwoDatabase()
 
         val database = Room.databaseBuilder(context, NoScrollDatabase::class.java, databaseName)
@@ -57,6 +57,7 @@ class NoScrollMigrationTest {
                 NoScrollDatabase.MIGRATION_3_4,
                 NoScrollDatabase.MIGRATION_4_5,
                 NoScrollDatabase.MIGRATION_5_6,
+                NoScrollDatabase.MIGRATION_6_7,
             )
             .allowMainThreadQueries()
             .build()
@@ -76,7 +77,7 @@ class NoScrollMigrationTest {
     }
 
     @Test
-    fun migrationThreeToSixPreservesVersionThreeState() = runBlocking {
+    fun migrationThreeToSevenPreservesVersionThreeState() = runBlocking {
         createVersionThreeDatabase()
 
         val database = Room.databaseBuilder(context, NoScrollDatabase::class.java, databaseName)
@@ -84,6 +85,7 @@ class NoScrollMigrationTest {
                 NoScrollDatabase.MIGRATION_3_4,
                 NoScrollDatabase.MIGRATION_4_5,
                 NoScrollDatabase.MIGRATION_5_6,
+                NoScrollDatabase.MIGRATION_6_7,
             )
             .allowMainThreadQueries()
             .build()

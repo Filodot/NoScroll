@@ -72,6 +72,9 @@ abstract class LearningDao {
     @Query("SELECT * FROM learning_sources WHERE course_id = :courseId ORDER BY imported_at_epoch_millis, id")
     abstract suspend fun getSources(courseId: String): List<LearningSourceEntity>
 
+    @Query("SELECT * FROM learning_source_chunks WHERE course_id = :courseId ORDER BY position, id")
+    abstract suspend fun getSourceChunks(courseId: String): List<LearningSourceChunkEntity>
+
     @Query("SELECT * FROM curriculum_nodes WHERE course_id = :courseId ORDER BY position, id")
     abstract suspend fun getCurriculumNodes(courseId: String): List<CurriculumNodeEntity>
 
@@ -110,6 +113,9 @@ abstract class LearningDao {
     protected abstract suspend fun upsertSources(entities: List<LearningSourceEntity>)
 
     @Upsert
+    protected abstract suspend fun upsertSourceChunks(entities: List<LearningSourceChunkEntity>)
+
+    @Upsert
     protected abstract suspend fun upsertCurriculumNodes(entities: List<CurriculumNodeEntity>)
 
     @Upsert
@@ -129,6 +135,9 @@ abstract class LearningDao {
 
     @Query("DELETE FROM learning_sources WHERE course_id = :courseId")
     protected abstract suspend fun deleteSources(courseId: String)
+
+    @Query("DELETE FROM learning_source_chunks WHERE course_id = :courseId")
+    protected abstract suspend fun deleteSourceChunks(courseId: String)
 
     @Query("DELETE FROM curriculum_nodes WHERE course_id = :courseId")
     protected abstract suspend fun deleteCurriculumNodes(courseId: String)
@@ -173,14 +182,17 @@ abstract class LearningDao {
     open suspend fun saveCourseContent(
         course: LearningCourseEntity,
         sources: List<LearningSourceEntity>,
+        sourceChunks: List<LearningSourceChunkEntity>,
         nodes: List<CurriculumNodeEntity>,
         concepts: List<LearningConceptEntity>,
     ) {
         upsertCourse(course)
+        deleteSourceChunks(course.id)
         deleteSources(course.id)
         deleteCurriculumNodes(course.id)
         deleteConcepts(course.id)
         if (sources.isNotEmpty()) upsertSources(sources)
+        if (sourceChunks.isNotEmpty()) upsertSourceChunks(sourceChunks)
         if (nodes.isNotEmpty()) upsertCurriculumNodes(nodes)
         if (concepts.isNotEmpty()) upsertConcepts(concepts)
         deleteOrphanMastery()
@@ -208,6 +220,7 @@ abstract class LearningDao {
         deleteCourseAttempts(courseId)
         deleteCourseActivities(courseId)
         deleteCourseLessons(courseId)
+        deleteSourceChunks(courseId)
         deleteSources(courseId)
         deleteCurriculumNodes(courseId)
         deleteConcepts(courseId)

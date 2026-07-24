@@ -7,6 +7,9 @@ import com.filodot.noscroll.core.learning.model.AttemptResult
 import com.filodot.noscroll.core.learning.model.ConceptMastery
 import com.filodot.noscroll.core.learning.model.LearningAttempt
 import com.filodot.noscroll.core.learning.model.LearningCourseContent
+import com.filodot.noscroll.core.learning.model.LearningSource
+import com.filodot.noscroll.core.learning.model.LearningSourceChunk
+import com.filodot.noscroll.core.learning.model.LearningSourceType
 import com.filodot.noscroll.core.learning.model.LessonPackageStatus
 import com.filodot.noscroll.core.learning.model.SelfConfidence
 import com.filodot.noscroll.data.local.repository.RoomLearningRepository
@@ -47,9 +50,28 @@ class LearningRoomRepositoryTest {
 
     @Test
     fun `course lesson attempt and mastery survive repository recreation`() = runBlocking {
+        val source = LearningSource(
+            id = "source-1",
+            courseId = StaticLearningCatalog.pythonCourse.id,
+            title = "Python notes",
+            type = LearningSourceType.PLAIN_TEXT,
+            contentHash = "abc",
+            importedAt = Instant.parse("2026-07-24T09:00:00Z"),
+        )
+        val chunk = LearningSourceChunk(
+            id = "chunk-1",
+            sourceId = source.id,
+            courseId = source.courseId,
+            position = 0,
+            text = "Переменная хранит значение.",
+            characterStart = 0,
+            characterEnd = 27,
+            estimatedTokens = 7,
+        )
         val content = LearningCourseContent(
             course = StaticLearningCatalog.pythonCourse,
-            sources = emptyList(),
+            sources = listOf(source),
+            sourceChunks = listOf(chunk),
             curriculumNodes = listOf(StaticLearningCatalog.firstTopic),
             concepts = listOf(
                 StaticLearningCatalog.variablesConcept,

@@ -152,6 +152,28 @@ data class LearningSourceEntity(
     val importedAtEpochMillis: Long,
 )
 
+@Entity(tableName = "learning_source_chunks")
+data class LearningSourceChunkEntity(
+    @PrimaryKey
+    val id: String,
+    @ColumnInfo(name = "source_id")
+    val sourceId: String,
+    @ColumnInfo(name = "course_id")
+    val courseId: String,
+    val position: Int,
+    val text: String,
+    @ColumnInfo(name = "page_number")
+    val pageNumber: Int?,
+    @ColumnInfo(name = "section_title")
+    val sectionTitle: String?,
+    @ColumnInfo(name = "character_start")
+    val characterStart: Int,
+    @ColumnInfo(name = "character_end")
+    val characterEnd: Int,
+    @ColumnInfo(name = "estimated_tokens")
+    val estimatedTokens: Int,
+)
+
 @Entity(tableName = "curriculum_nodes")
 data class CurriculumNodeEntity(
     @PrimaryKey

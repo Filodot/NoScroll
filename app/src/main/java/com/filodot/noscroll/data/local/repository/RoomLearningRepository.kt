@@ -24,11 +24,14 @@ class RoomLearningRepository(
 
     override suspend fun saveCourseContent(content: LearningCourseContent) {
         require(content.sources.all { it.courseId == content.course.id })
+        require(content.sourceChunks.all { it.courseId == content.course.id })
+        require(content.sourceChunks.all { chunk -> content.sources.any { it.id == chunk.sourceId } })
         require(content.curriculumNodes.all { it.courseId == content.course.id })
         require(content.concepts.all { it.courseId == content.course.id })
         dao.saveCourseContent(
             course = content.course.toEntity(),
             sources = content.sources.map { it.toEntity() },
+            sourceChunks = content.sourceChunks.map { it.toEntity() },
             nodes = content.curriculumNodes.map { it.toEntity() },
             concepts = content.concepts.map { it.toEntity() },
         )
@@ -39,6 +42,7 @@ class RoomLearningRepository(
         return LearningCourseContent(
             course = course,
             sources = dao.getSources(courseId).map { it.toModel() },
+            sourceChunks = dao.getSourceChunks(courseId).map { it.toModel() },
             curriculumNodes = dao.getCurriculumNodes(courseId).map { it.toModel() },
             concepts = dao.getConcepts(courseId).map { it.toModel() },
         )

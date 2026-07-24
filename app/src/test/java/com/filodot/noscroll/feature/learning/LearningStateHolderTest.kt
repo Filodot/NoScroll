@@ -1,8 +1,14 @@
 package com.filodot.noscroll.feature.learning
 
 import com.filodot.noscroll.core.learning.content.StaticLearningCatalog
+import com.filodot.noscroll.core.learning.importing.LearningMaterialDocument
+import com.filodot.noscroll.core.learning.importing.LearningMaterialGateway
+import com.filodot.noscroll.core.learning.importing.MaterialSection
 import com.filodot.noscroll.core.learning.model.AttemptResult
 import com.filodot.noscroll.core.learning.model.LearningCourseContent
+import com.filodot.noscroll.core.learning.model.CourseOrigin
+import com.filodot.noscroll.core.learning.model.GroundingMode
+import com.filodot.noscroll.core.learning.model.LearningSourceType
 import com.filodot.noscroll.core.testing.InMemoryLearningRepository
 import java.time.Instant
 import java.time.ZoneId
@@ -69,6 +75,51 @@ class LearningStateHolderTest {
         assertEquals(1, holder.state.value.activityIndex)
     }
 
+    @Test
+    fun `topic course is saved as AI knowledge draft`() = runTest {
+        val repository = InMemoryLearningRepository()
+        val holder = holder(repository)
+        runCurrent()
+
+        holder.dispatch(LearningAction.StartCreateCourse)
+        holder.dispatch(LearningAction.SetCreateTitle("Мой SQL"))
+        holder.dispatch(LearningAction.SetCreateTopic("Основы SQL для аналитики данных"))
+        holder.dispatch(LearningAction.CreateTopicCourse)
+        runCurrent()
+
+        val content = requireNotNull(holder.state.value.selectedCourse)
+        assertEquals(CourseOrigin.TOPIC, content.course.origin)
+        assertEquals(GroundingMode.AI_KNOWLEDGE, content.course.groundingMode)
+        assertEquals("Мой SQL", content.course.title)
+        assertEquals(LearningSourceType.TOPIC, content.sources.single().type)
+        assertTrue(content.sourceChunks.isEmpty())
+    }
+
+    @Test
+    fun `imported material is chunked and persisted as grounded course`() = runTest {
+        val repository = InMemoryLearningRepository()
+        val gateway = LearningMaterialGateway {
+            LearningMaterialDocument(
+                title = "notes.md",
+                type = LearningSourceType.MARKDOWN,
+                sections = listOf(MaterialSection("# Заголовок\n\nПолезный материал.")),
+            )
+        }
+        val holder = holder(repository, gateway)
+        runCurrent()
+
+        holder.dispatch(LearningAction.StartCreateCourse)
+        holder.dispatch(LearningAction.ImportMaterial("content://notes"))
+        runCurrent()
+
+        val content = requireNotNull(holder.state.value.selectedCourse)
+        assertEquals(CourseOrigin.MATERIAL, content.course.origin)
+        assertEquals(GroundingMode.SOURCE_REQUIRED, content.course.groundingMode)
+        assertEquals("notes", content.course.title)
+        assertEquals(LearningSourceType.MARKDOWN, content.sources.single().type)
+        assertEquals("# Заголовок\n\nПолезный материал.", content.sourceChunks.single().text)
+    }
+
     private suspend fun kotlinx.coroutines.test.TestScope.openFirstLesson(
         holder: LearningStateHolder,
     ) {
@@ -80,9 +131,11 @@ class LearningStateHolderTest {
 
     private fun kotlinx.coroutines.test.TestScope.holder(
         repository: InMemoryLearningRepository,
+        materialGateway: LearningMaterialGateway? = null,
     ) = LearningStateHolder(
         repository = repository,
         scope = backgroundScope,
+        materialGateway = materialGateway,
         now = { now },
         zoneId = ZoneId.of("UTC"),
         idGenerator = { "attempt-${repository.hashCode()}-${holderIds++}" },
