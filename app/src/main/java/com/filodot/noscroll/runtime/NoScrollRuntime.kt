@@ -91,6 +91,7 @@ class NoScrollRuntime private constructor(application: Application) {
         usageRepository = usageRepository,
         taskRepository = taskRepository,
         taskPresetRepository = taskPresetRepository,
+        learningRepository = learningRepository,
         emergencyRepository = emergencyRepository,
         taskGrantTransaction = RoomTaskGrantTransaction(database.taskGrantDao()),
         usageStatsSource = AndroidUsageStatsSource(application),

@@ -44,6 +44,8 @@ import com.filodot.noscroll.core.model.TaskDifficulty
 import com.filodot.noscroll.core.model.TaskTarget
 import com.filodot.noscroll.core.model.TaskType
 import com.filodot.noscroll.core.model.UserSettings
+import com.filodot.noscroll.core.learning.model.CourseStatus
+import com.filodot.noscroll.core.learning.model.LearningCourse
 import com.filodot.noscroll.feature.dashboard.DashboardAction
 import com.filodot.noscroll.feature.dashboard.DashboardScreen
 import com.filodot.noscroll.feature.dashboard.DashboardUiState
@@ -82,6 +84,7 @@ import com.filodot.noscroll.feature.settings.SystemAccessUiStatus
 import com.filodot.noscroll.feature.tasks.TaskSettingsAction
 import com.filodot.noscroll.feature.tasks.TaskSettingsScreen
 import com.filodot.noscroll.feature.tasks.TaskSettingsUiState
+import com.filodot.noscroll.feature.tasks.LearningCourseChoiceUi
 import com.filodot.noscroll.monitoring.runtime.MonitoringDiagnostics
 import com.filodot.noscroll.monitoring.runtime.MonitoringCoordinator
 import com.filodot.noscroll.monitoring.runtime.MonitoringHealthStatus
@@ -120,6 +123,9 @@ fun NoScrollApp(
     val gateCycle by appGraph.usageRepository.gateCycle.collectAsStateWithLifecycle()
     val pendingTask by appGraph.taskRepository.pendingTask.collectAsStateWithLifecycle()
     val taskPresets by appGraph.taskPresetRepository.presets.collectAsStateWithLifecycle()
+    val learningCourses by appGraph.learningRepository.courses.collectAsStateWithLifecycle(
+        initialValue = emptyList(),
+    )
     val emergencyState by appGraph.emergencyRepository.state.collectAsStateWithLifecycle()
     val activeEnforcement = appGraph.monitoring?.let { monitoring ->
         val state by monitoring.enforcement.collectAsStateWithLifecycle()
@@ -441,7 +447,12 @@ fun NoScrollApp(
             composable(AppRoute.Tasks.path) {
                 MainDestinationScaffold(navController, AppRoute.Tasks) {
                     TaskSettingsScreen(
-                        state = buildTaskSettingsState(settings, gateCycle, taskPresets),
+                        state = buildTaskSettingsState(
+                            settings,
+                            gateCycle,
+                            taskPresets,
+                            learningCourses,
+                        ),
                         onAction = { action ->
                             when (action) {
                                 is TaskSettingsAction.SetMediumThreshold -> scope.launch {
@@ -487,7 +498,30 @@ fun NoScrollApp(
                                         current.enabledTaskTypes - action.type
                                     }.ifEmpty { setOf(TaskType.ARITHMETIC) }
                                     appGraph.settingsRepository.save(
-                                        current.copy(enabledTaskTypes = updated),
+                                        current.copy(
+                                            enabledTaskTypes = updated,
+                                            selectedLearningCourseIds = if (
+                                                action.type == TaskType.LEARNING &&
+                                                action.enabled &&
+                                                current.selectedLearningCourseIds.isEmpty()
+                                            ) {
+                                                learningCourses.mapTo(mutableSetOf()) { it.id }
+                                            } else {
+                                                current.selectedLearningCourseIds
+                                            },
+                                        ),
+                                    )
+                                }
+
+                                is TaskSettingsAction.SetLearningCourseEnabled -> scope.launch {
+                                    val current = appGraph.settingsRepository.settings.value
+                                    val selected = if (action.enabled) {
+                                        current.selectedLearningCourseIds + action.courseId
+                                    } else {
+                                        current.selectedLearningCourseIds - action.courseId
+                                    }
+                                    appGraph.settingsRepository.save(
+                                        current.copy(selectedLearningCourseIds = selected),
                                     )
                                 }
 
@@ -831,6 +865,7 @@ private fun buildTaskSettingsState(
     settings: UserSettings,
     cycle: GateCycle,
     presets: List<CustomTaskPreset>,
+    courses: List<LearningCourse>,
 ): TaskSettingsUiState {
     val loadMinutes = (cycle.difficultyLoadSeconds / 60).toInt()
     val difficulty = when {
@@ -847,6 +882,10 @@ private fun buildTaskSettingsState(
         enabledTypes = settings.enabledTaskTypes,
         presets = presets,
         instagramEnabled = settings.instagramGateEnabled,
+        learningCourses = courses
+            .filter { it.status == CourseStatus.READY || it.status == CourseStatus.ACTIVE }
+            .map { LearningCourseChoiceUi(it.id, it.title) },
+        selectedLearningCourseIds = settings.selectedLearningCourseIds,
     )
 }
 

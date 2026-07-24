@@ -56,6 +56,11 @@ class RoomLearningRepository(
         dao.saveLesson(lesson.toEntity(), lesson.toActivityEntities())
     }
 
+    override suspend fun getLesson(lessonId: String): LessonPackage? =
+        dao.getLesson(lessonId)?.let { entity ->
+            entity.toModel(dao.getActivities(entity.id))
+        }
+
     override suspend fun peekNextLesson(courseId: String): LessonPackage? =
         dao.getNextValidatedLesson(courseId)?.let { entity ->
             entity.toModel(dao.getActivities(entity.id))

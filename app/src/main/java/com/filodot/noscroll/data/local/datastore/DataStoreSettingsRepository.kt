@@ -75,6 +75,8 @@ class DataStoreSettingsRepository(
                 preferences[Keys.ENABLED_TASK_TYPES] = settings.enabledTaskTypes
                     .sortedBy(TaskType::ordinal)
                     .joinToString(",", transform = TaskType::name)
+                preferences[Keys.SELECTED_LEARNING_COURSE_IDS] =
+                    settings.selectedLearningCourseIds.sorted().joinToString(",")
                 preferences[Keys.PRESET] = settings.preset.name
                 preferences[Keys.EMERGENCY_ACTIVE] = settings.emergencyActive
                 preferences[Keys.DETECTOR_RULES_VERSION] = settings.detectorRulesVersion
@@ -120,6 +122,7 @@ private object Keys {
         intPreferencesKey("difficulty_hard_threshold_minutes")
     val DIFFICULTY_DECAY_BREAK_MINUTES = intPreferencesKey("difficulty_decay_break_minutes")
     val ENABLED_TASK_TYPES = stringPreferencesKey("enabled_task_types")
+    val SELECTED_LEARNING_COURSE_IDS = stringPreferencesKey("selected_learning_course_ids")
     val PRESET = stringPreferencesKey("preset")
     val EMERGENCY_ACTIVE = booleanPreferencesKey("emergency_active")
     val ACCESSIBILITY_DISCLOSURE_ACCEPTED_AT =
@@ -157,6 +160,12 @@ private fun preferencesToSettings(preferences: Preferences): UserSettings {
             ?.toSet()
             ?.takeIf(Set<TaskType>::isNotEmpty)
             ?: defaults.enabledTaskTypes,
+        selectedLearningCourseIds = preferences[Keys.SELECTED_LEARNING_COURSE_IDS]
+            ?.split(',')
+            ?.map(String::trim)
+            ?.filter(String::isNotEmpty)
+            ?.toSet()
+            ?: defaults.selectedLearningCourseIds,
         preset = preferences[Keys.PRESET]
             ?.let { stored -> enumValues<LimitPreset>().firstOrNull { it.name == stored } }
             ?: defaults.preset,

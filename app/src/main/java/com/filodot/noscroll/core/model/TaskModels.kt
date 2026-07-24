@@ -32,12 +32,19 @@ enum class TaskType {
     ARITHMETIC,
     PUSH_UPS,
     CUSTOM,
+    LEARNING,
 }
 
 enum class TaskCompletionMode {
     CHECKED_ANSWER,
+    SINGLE_CHOICE,
     MANUAL_CONFIRMATION,
 }
+
+data class TaskChoice(
+    val id: String,
+    val text: String,
+)
 
 data class CustomTaskPreset(
     val id: String,
@@ -63,4 +70,10 @@ data class PendingTask(
     val completionMode: TaskCompletionMode = TaskCompletionMode.CHECKED_ANSWER,
     val prompt: String = "",
     val customPresetId: String? = null,
+    val choices: List<TaskChoice> = emptyList(),
+    val expectedChoiceId: String? = null,
+    val learningCourseId: String? = null,
+    val learningLessonId: String? = null,
+    val learningActivityId: String? = null,
+    val learningExplanation: String? = null,
 )

@@ -27,7 +27,9 @@ class LocalTaskFactory(
     ): PendingTask {
         val enabledCustom = customPresets.filter(CustomTaskPreset::enabled)
         val available = TaskType.entries.filter { type ->
-            type in enabledTypes && (type != TaskType.CUSTOM || enabledCustom.isNotEmpty())
+            type in enabledTypes &&
+                type != TaskType.LEARNING &&
+                (type != TaskType.CUSTOM || enabledCustom.isNotEmpty())
         }.ifEmpty { listOf(TaskType.ARITHMETIC) }
         return when (val type = available[Math.floorMod(sequence, available.size)]) {
             TaskType.ARITHMETIC -> LocalArithmeticTaskEngine(wallClock = wallClock)
@@ -52,6 +54,8 @@ class LocalTaskFactory(
                     presetId = preset.id,
                 )
             }
+
+            TaskType.LEARNING -> error("Learning tasks are created from the offline lesson queue")
         }
     }
 

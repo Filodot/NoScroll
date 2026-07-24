@@ -81,4 +81,18 @@ class LocalTaskFactoryTest {
         assertEquals(TaskType.ARITHMETIC, task.type)
         assertEquals(TaskCompletionMode.CHECKED_ANSWER, task.completionMode)
     }
+
+    @Test
+    fun `learning type safely falls back because it requires offline repository`() {
+        val task = factory.create(
+            TaskDifficulty.EASY,
+            TaskTrigger.ENTRY,
+            TaskTarget.YOUTUBE_SHORTS,
+            setOf(TaskType.LEARNING),
+            emptyList(),
+            sequence = 0,
+        )
+
+        assertEquals(TaskType.ARITHMETIC, task.type)
+    }
 }

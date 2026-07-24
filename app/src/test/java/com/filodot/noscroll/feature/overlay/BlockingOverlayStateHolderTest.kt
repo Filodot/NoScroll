@@ -1,6 +1,8 @@
 package com.filodot.noscroll.feature.overlay
 
 import com.filodot.noscroll.core.model.EmergencyActivationSource
+import com.filodot.noscroll.core.model.TaskChoice
+import com.filodot.noscroll.core.model.TaskCompletionMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -80,6 +82,29 @@ class BlockingOverlayStateHolderTest {
 
         assertEquals(TaskAnswerStatus.CORRECT, task(holder).answerStatus)
         assertTrue(effects.last() is BlockingOverlayEffect.TaskSolved)
+    }
+
+    @Test
+    fun `single choice task accepts only known option and submits its id`() {
+        val effects = mutableListOf<BlockingOverlayEffect>()
+        val holder = BlockingOverlayStateHolder(
+            initialEnforcement = taskState().copy(
+                completionMode = TaskCompletionMode.SINGLE_CHOICE,
+                choices = listOf(TaskChoice("a", "Первый"), TaskChoice("b", "Второй")),
+            ),
+            emitEffect = effects::add,
+        )
+
+        holder.dispatch(BlockingOverlayAction.SelectChoice("unknown"))
+        assertEquals("", task(holder).answer)
+        holder.dispatch(BlockingOverlayAction.SelectChoice("b"))
+        holder.dispatch(BlockingOverlayAction.SubmitAnswer)
+
+        assertEquals("b", task(holder).answer)
+        assertEquals(
+            BlockingOverlayEffect.VerifyAnswer(taskId = "task-1", answer = "b"),
+            effects.single(),
+        )
     }
 
     @Test

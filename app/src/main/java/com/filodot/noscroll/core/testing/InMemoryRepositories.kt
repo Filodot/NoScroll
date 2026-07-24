@@ -121,6 +121,8 @@ class InMemoryLearningRepository(
         publishLessons()
     }
 
+    override suspend fun getLesson(lessonId: String): LessonPackage? = lessonsById[lessonId]
+
     override suspend fun peekNextLesson(courseId: String): LessonPackage? =
         validatedLessons(courseId).firstOrNull()
 

@@ -28,7 +28,7 @@ class NoScrollMigrationTest {
     }
 
     @Test
-    fun migrationOneToSevenPreservesUsageAndInitializesNewColumns() = runBlocking {
+    fun migrationOneToEightPreservesUsageAndInitializesNewColumns() = runBlocking {
         createVersionOneDatabase()
 
         val database = Room.databaseBuilder(context, NoScrollDatabase::class.java, databaseName)
@@ -48,7 +48,7 @@ class NoScrollMigrationTest {
     }
 
     @Test
-    fun migrationTwoToSevenPreservesPendingGateAndAddsAllDefaults() = runBlocking {
+    fun migrationTwoToEightPreservesPendingGateAndAddsAllDefaults() = runBlocking {
         createVersionTwoDatabase()
 
         val database = Room.databaseBuilder(context, NoScrollDatabase::class.java, databaseName)
@@ -58,6 +58,7 @@ class NoScrollMigrationTest {
                 NoScrollDatabase.MIGRATION_4_5,
                 NoScrollDatabase.MIGRATION_5_6,
                 NoScrollDatabase.MIGRATION_6_7,
+                NoScrollDatabase.MIGRATION_7_8,
             )
             .allowMainThreadQueries()
             .build()
@@ -73,11 +74,13 @@ class NoScrollMigrationTest {
         assertEquals(0L, cycle.difficultyLoadSeconds)
         assertEquals(com.filodot.noscroll.core.model.TaskDifficulty.MEDIUM, task.difficulty)
         assertEquals(com.filodot.noscroll.core.model.TaskTrigger.INTERVAL, task.trigger)
+        assertEquals(emptyList<com.filodot.noscroll.core.model.TaskChoice>(), task.choices)
+        assertEquals(null, task.learningCourseId)
         database.close()
     }
 
     @Test
-    fun migrationThreeToSevenPreservesVersionThreeState() = runBlocking {
+    fun migrationThreeToEightPreservesVersionThreeState() = runBlocking {
         createVersionThreeDatabase()
 
         val database = Room.databaseBuilder(context, NoScrollDatabase::class.java, databaseName)
@@ -86,6 +89,7 @@ class NoScrollMigrationTest {
                 NoScrollDatabase.MIGRATION_4_5,
                 NoScrollDatabase.MIGRATION_5_6,
                 NoScrollDatabase.MIGRATION_6_7,
+                NoScrollDatabase.MIGRATION_7_8,
             )
             .allowMainThreadQueries()
             .build()

@@ -3,6 +3,9 @@ package com.filodot.noscroll.monitoring.runtime
 import android.os.SystemClock
 import android.util.Log
 import com.filodot.noscroll.core.contracts.WallClock
+import com.filodot.noscroll.core.contracts.LearningRepository
+import com.filodot.noscroll.core.learning.gate.LearningGateTaskFactory
+import com.filodot.noscroll.core.learning.model.AttemptResult
 import com.filodot.noscroll.core.model.ArithmeticOperation
 import com.filodot.noscroll.core.model.AccessibilityWindowEvent
 import com.filodot.noscroll.core.model.DailyUsage
@@ -95,6 +98,7 @@ class MonitoringCoordinator(
     private val usageRepository: RoomUsageRepository,
     private val taskRepository: RoomTaskRepository,
     private val taskPresetRepository: RoomTaskPresetRepository,
+    private val learningRepository: LearningRepository,
     private val emergencyRepository: RoomEmergencyRepository,
     private val taskGrantTransaction: RoomTaskGrantTransaction,
     private val usageStatsSource: AndroidUsageStatsSource,
@@ -106,6 +110,7 @@ class MonitoringCoordinator(
     private val policyEngine = PolicyEngine()
     private val taskDifficultyPolicy = TaskDifficultyPolicy()
     private val taskFactory = LocalTaskFactory(wallClock)
+    private val learningTaskFactory = LearningGateTaskFactory(learningRepository, wallClock)
     private val reconstructor = YouTubeForegroundReconstructor()
     private val entryGate = ShortsEntryGate()
     private val deferredIntervalGate = DeferredIntervalGate()
@@ -261,9 +266,11 @@ class MonitoringCoordinator(
         if (task == null || task.id != taskId || task.solved) return@withLock false
         val correct = when (task.completionMode) {
             TaskCompletionMode.CHECKED_ANSWER -> answer.trim().toIntOrNull() == task.expectedAnswer
+            TaskCompletionMode.SINGLE_CHOICE -> answer == task.expectedChoiceId
             TaskCompletionMode.MANUAL_CONFIRMATION -> true
         }
         if (!correct) {
+            recordLearningResult(task, AttemptResult.INCORRECT)
             val updated = task.copy(wrongAttempts = task.wrongAttempts.saturatingIncrement())
             taskRepository.save(updated)
             mutableEnforcement.value = updated.toUi(grantMinutesFor(updated.target))
@@ -283,6 +290,7 @@ class MonitoringCoordinator(
             entryCooldownUntil = entryCooldownUntil,
         )
         if (granted) {
+            recordLearningResult(task, AttemptResult.CORRECT)
             val solvedUsage = usageRepository.dailyUsage.value.let { current ->
                 current.copy(
                     tasksSolved = maxOf(
@@ -356,6 +364,7 @@ class MonitoringCoordinator(
     suspend fun replaceTask(): EnforcementUiState.TaskGate? = mutex.withLock {
         val current = taskRepository.pendingTask.value ?: return@withLock null
         if (current.wrongAttempts < WRONG_ATTEMPTS_FOR_REPLACEMENT) return@withLock null
+        recordLearningResult(current, AttemptResult.REPLACED_AS_SUSPICIOUS)
         taskRepository.clear(current.id)
         val replacement = newTask(current.difficulty, current.trigger, current.target)
         taskRepository.save(replacement)
@@ -844,18 +853,51 @@ class MonitoringCoordinator(
         return task.toUi(grantMinutesFor(task.target))
     }
 
-    private fun newTask(
+    private suspend fun newTask(
         difficulty: TaskDifficulty,
         trigger: TaskTrigger,
         target: TaskTarget,
-    ): PendingTask = taskFactory.create(
-        difficulty = difficulty,
-        trigger = trigger,
-        target = target,
-        enabledTypes = settingsRepository.settings.value.enabledTaskTypes,
-        customPresets = taskPresetRepository.presets.value,
-        sequence = usageRepository.dailyUsage.value.gatesShown,
-    )
+    ): PendingTask {
+        val settings = settingsRepository.settings.value
+        val customPresets = taskPresetRepository.presets.value
+        val available = TaskType.entries.filter { type ->
+            type in settings.enabledTaskTypes &&
+                (type != TaskType.CUSTOM || customPresets.any { it.enabled })
+        }.ifEmpty { listOf(TaskType.ARITHMETIC) }
+        val sequence = usageRepository.dailyUsage.value.gatesShown
+        val selected = available[Math.floorMod(sequence, available.size)]
+        if (selected == TaskType.LEARNING) {
+            learningTaskFactory.create(
+                difficulty = difficulty,
+                trigger = trigger,
+                target = target,
+                selectedCourseIds = settings.selectedLearningCourseIds,
+                sequence = sequence,
+            )?.let { return it }
+        }
+        val localTypes = if (selected == TaskType.LEARNING) {
+            settings.enabledTaskTypes - TaskType.LEARNING
+        } else {
+            setOf(selected)
+        }
+        return taskFactory.create(
+            difficulty = difficulty,
+            trigger = trigger,
+            target = target,
+            enabledTypes = localTypes,
+            customPresets = customPresets,
+            sequence = sequence,
+        )
+    }
+
+    private suspend fun recordLearningResult(task: PendingTask, result: AttemptResult) {
+        if (task.type != TaskType.LEARNING) return
+        try {
+            learningTaskFactory.recordResult(task, result)
+        } catch (error: Exception) {
+            Log.w(LOG_TAG, "Learning progress write failed: ${error::class.java.simpleName}")
+        }
+    }
 
     private fun showEnforcement(state: EnforcementUiState) {
         mutableEnforcement.value = state
@@ -937,6 +979,8 @@ class MonitoringCoordinator(
             target = target,
             type = type,
             completionMode = completionMode,
+            choices = choices,
+            explanation = learningExplanation,
         )
     }
 

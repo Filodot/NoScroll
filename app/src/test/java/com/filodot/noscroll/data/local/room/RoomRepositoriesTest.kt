@@ -9,6 +9,9 @@ import com.filodot.noscroll.core.model.EmergencyEvent
 import com.filodot.noscroll.core.model.GateCycle
 import com.filodot.noscroll.core.model.PendingTask
 import com.filodot.noscroll.core.model.TaskDifficulty
+import com.filodot.noscroll.core.model.TaskChoice
+import com.filodot.noscroll.core.model.TaskCompletionMode
+import com.filodot.noscroll.core.model.TaskType
 import com.filodot.noscroll.core.model.TaskTrigger
 import com.filodot.noscroll.core.model.TaskTarget
 import com.filodot.noscroll.data.local.repository.RoomEmergencyRepository
@@ -86,7 +89,18 @@ class RoomRepositoriesTest {
             taskExits = 1,
             lastUpdatedElapsedMillis = 9_876,
         )
-        val task = pendingTask("task-1", now).copy(difficulty = TaskDifficulty.HARD)
+        val task = pendingTask("task-1", now).copy(
+            difficulty = TaskDifficulty.HARD,
+            type = TaskType.LEARNING,
+            completionMode = TaskCompletionMode.SINGLE_CHOICE,
+            prompt = "Выберите ответ",
+            choices = listOf(TaskChoice("a", "Да"), TaskChoice("b", "Нет")),
+            expectedChoiceId = "a",
+            learningCourseId = "course-1",
+            learningLessonId = "lesson-1",
+            learningActivityId = "activity-1",
+            learningExplanation = "Потому что это верный ответ.",
+        )
         val storedCycle = fallbackCycle.copy(
             usedSeconds = 299,
             pendingTaskId = task.id,

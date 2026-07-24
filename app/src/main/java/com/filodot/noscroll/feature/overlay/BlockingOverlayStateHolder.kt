@@ -8,6 +8,7 @@ import com.filodot.noscroll.core.model.TaskTrigger
 import com.filodot.noscroll.core.model.TaskCompletionMode
 import com.filodot.noscroll.core.model.TaskTarget
 import com.filodot.noscroll.core.model.TaskType
+import com.filodot.noscroll.core.model.TaskChoice
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,6 +24,8 @@ sealed interface EnforcementUiState {
         val target: TaskTarget = TaskTarget.YOUTUBE_SHORTS,
         val type: TaskType = TaskType.ARITHMETIC,
         val completionMode: TaskCompletionMode = TaskCompletionMode.CHECKED_ANSWER,
+        val choices: List<TaskChoice> = emptyList(),
+        val explanation: String? = null,
         val answer: String = "",
         val wrongAttempts: Int = 0,
         val answerStatus: TaskAnswerStatus = TaskAnswerStatus.READY,
@@ -69,6 +72,7 @@ data class BlockingOverlayUiState(
 
 sealed interface BlockingOverlayAction {
     data class UpdateAnswer(val value: String) : BlockingOverlayAction
+    data class SelectChoice(val choiceId: String) : BlockingOverlayAction
     data object SubmitAnswer : BlockingOverlayAction
     data class AnswerChecked(val correct: Boolean) : BlockingOverlayAction
     data object RequestAnotherTask : BlockingOverlayAction
@@ -123,6 +127,7 @@ class BlockingOverlayStateHolder(
     fun dispatch(action: BlockingOverlayAction) {
         when (action) {
             is BlockingOverlayAction.UpdateAnswer -> updateAnswer(action.value)
+            is BlockingOverlayAction.SelectChoice -> selectChoice(action.choiceId)
             BlockingOverlayAction.SubmitAnswer -> submitAnswer()
             is BlockingOverlayAction.AnswerChecked -> handleAnswerResult(action.correct)
             BlockingOverlayAction.RequestAnotherTask -> requestAnotherTask()
@@ -161,12 +166,32 @@ class BlockingOverlayStateHolder(
         )
     }
 
+    private fun selectChoice(choiceId: String) {
+        val current = mutableState.value
+        if (current.emergencyForm != null) return
+        val task = current.enforcement as? EnforcementUiState.TaskGate ?: return
+        if (task.completionMode != TaskCompletionMode.SINGLE_CHOICE ||
+            task.answerStatus == TaskAnswerStatus.CHECKING ||
+            task.answerStatus == TaskAnswerStatus.CORRECT ||
+            task.choices.none { it.id == choiceId }
+        ) {
+            return
+        }
+        mutableState.value = current.copy(
+            enforcement = task.copy(
+                answer = choiceId,
+                answerStatus = TaskAnswerStatus.READY,
+            ),
+        )
+    }
+
     private fun submitAnswer() {
         val current = mutableState.value
         if (current.emergencyForm != null) return
         val task = current.enforcement as? EnforcementUiState.TaskGate ?: return
         if (
-            (task.completionMode == TaskCompletionMode.CHECKED_ANSWER && task.answer.isBlank()) ||
+            (task.completionMode != TaskCompletionMode.MANUAL_CONFIRMATION &&
+                task.answer.isBlank()) ||
             task.answerStatus == TaskAnswerStatus.CHECKING ||
             task.answerStatus == TaskAnswerStatus.CORRECT
         ) {

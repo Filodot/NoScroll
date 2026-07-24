@@ -21,6 +21,7 @@ data class UserSettings(
     val difficultyHardThresholdMinutes: Int = DEFAULT_HARD_THRESHOLD_MINUTES,
     val difficultyDecayBreakMinutes: Int = DEFAULT_DIFFICULTY_DECAY_BREAK_MINUTES,
     val enabledTaskTypes: Set<TaskType> = setOf(TaskType.ARITHMETIC),
+    val selectedLearningCourseIds: Set<String> = emptySet(),
     val preset: LimitPreset = LimitPreset.BALANCED,
     val emergencyActive: Boolean = false,
     val accessibilityDisclosureAcceptedAt: Instant? = null,
@@ -36,6 +37,6 @@ data class UserSettings(
         const val DEFAULT_HARD_THRESHOLD_MINUTES = 25
         const val DEFAULT_DIFFICULTY_DECAY_BREAK_MINUTES = 5
         const val DEFAULT_DETECTOR_RULES_VERSION = 1
-        const val SETTINGS_SCHEMA_VERSION = 2
+        const val SETTINGS_SCHEMA_VERSION = 3
     }
 }

@@ -48,6 +48,13 @@ data class TaskSettingsUiState(
     val enabledTypes: Set<TaskType>,
     val presets: List<CustomTaskPreset>,
     val instagramEnabled: Boolean,
+    val learningCourses: List<LearningCourseChoiceUi> = emptyList(),
+    val selectedLearningCourseIds: Set<String> = emptySet(),
+)
+
+data class LearningCourseChoiceUi(
+    val id: String,
+    val title: String,
 )
 
 sealed interface TaskSettingsAction {
@@ -55,6 +62,8 @@ sealed interface TaskSettingsAction {
     data class SetHardThreshold(val minutes: Int) : TaskSettingsAction
     data class SetDecayBreakMinutes(val minutes: Int) : TaskSettingsAction
     data class SetTaskTypeEnabled(val type: TaskType, val enabled: Boolean) : TaskSettingsAction
+    data class SetLearningCourseEnabled(val courseId: String, val enabled: Boolean) :
+        TaskSettingsAction
     data class CreatePreset(val title: String, val instruction: String) : TaskSettingsAction
     data class SetPresetEnabled(val preset: CustomTaskPreset, val enabled: Boolean) :
         TaskSettingsAction
@@ -91,6 +100,7 @@ fun TaskSettingsScreen(
         PrepareAccessCard(state.instagramEnabled, onAction)
         DifficultyCard(state, onAction)
         TaskTypesCard(state, onAction)
+        LearningCoursesCard(state, onAction)
         CustomPresetsCard(state.presets, onAction)
         Spacer(Modifier.height(16.dp))
     }
@@ -241,7 +251,10 @@ private fun TaskTypesCard(
                     }
                     Switch(
                         checked = enabled,
-                        enabled = type != TaskType.CUSTOM || hasCustom || enabled,
+                        enabled = (type != TaskType.CUSTOM || hasCustom || enabled) &&
+                            (type != TaskType.LEARNING ||
+                                state.learningCourses.isNotEmpty() ||
+                                enabled),
                         onCheckedChange = { checked ->
                             onAction(TaskSettingsAction.SetTaskTypeEnabled(type, checked))
                         },
@@ -252,6 +265,53 @@ private fun TaskTypesCard(
                 "Если включено несколько типов, NoScroll чередует их.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+@Composable
+private fun LearningCoursesCard(
+    state: TaskSettingsUiState,
+    onAction: (TaskSettingsAction) -> Unit,
+) {
+    if (TaskType.LEARNING !in state.enabledTypes) return
+    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SectionTitle("Курсы для пауз")
+            Text(
+                "NoScroll берёт только заранее подготовленные офлайн-вопросы с одним " +
+                    "проверяемым ответом.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            state.learningCourses.forEach { course ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(course.title, modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = course.id in state.selectedLearningCourseIds,
+                        onCheckedChange = { enabled ->
+                            onAction(
+                                TaskSettingsAction.SetLearningCourseEnabled(course.id, enabled),
+                            )
+                        },
+                    )
+                }
+            }
+            if (state.learningCourses.isEmpty()) {
+                Text(
+                    "Сначала создайте курс, подтвердите план и подготовьте урок в разделе " +
+                        "«Обучение». Пока будет использоваться обычное задание.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else if (state.selectedLearningCourseIds.isEmpty()) {
+                Text(
+                    "Выберите хотя бы один курс. Без выбора сработает обычное задание.",
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
         }
     }
 }
@@ -330,10 +390,12 @@ private fun taskTypeLabel(type: TaskType): String = when (type) {
     TaskType.ARITHMETIC -> "Арифметика"
     TaskType.PUSH_UPS -> "Отжимания"
     TaskType.CUSTOM -> "Мои пресеты"
+    TaskType.LEARNING -> "Умные уроки"
 }
 
 private fun taskTypeDescription(type: TaskType): String = when (type) {
     TaskType.ARITHMETIC -> "Ответ проверяется автоматически"
     TaskType.PUSH_UPS -> "5 / 10 / 20 повторений по сложности"
     TaskType.CUSTOM -> "Одно из сохранённых вами заданий"
+    TaskType.LEARNING -> "Один вопрос из готового офлайн-урока"
 }

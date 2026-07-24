@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -28,6 +29,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -39,6 +41,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
@@ -173,6 +176,23 @@ private fun TaskGateContent(
     Spacer(Modifier.height(32.dp))
     if (task.answerStatus == TaskAnswerStatus.CORRECT) {
         SuccessMessage("Готово — $appLabel открыт на ${task.grantMinutes} минут")
+        task.explanation?.let { explanation ->
+            Spacer(Modifier.height(16.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                ),
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text("Почему так", style = MaterialTheme.typography.titleMedium)
+                    Text(explanation)
+                }
+            }
+        }
     } else if (task.completionMode == TaskCompletionMode.CHECKED_ANSWER) {
         Text(
             text = task.visualExpression,
@@ -232,6 +252,52 @@ private fun TaskGateContent(
                 Text("Другой пример")
             }
         }
+    } else if (task.completionMode == TaskCompletionMode.SINGLE_CHOICE) {
+        Text(task.visualExpression, style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(16.dp))
+        task.choices.forEach { choice ->
+            val selected = task.answer == choice.id
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .selectable(
+                        selected = selected,
+                        role = Role.RadioButton,
+                        onClick = {
+                            onAction(BlockingOverlayAction.SelectChoice(choice.id))
+                        },
+                    )
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RadioButton(selected = selected, onClick = null)
+                Text(choice.text, modifier = Modifier.padding(start = 10.dp))
+            }
+        }
+        if (task.answerStatus == TaskAnswerStatus.INCORRECT) {
+            Text(
+                "Пока неверно. Выберите другой ответ.",
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
+        }
+        Spacer(Modifier.height(16.dp))
+        Button(
+            onClick = { onAction(BlockingOverlayAction.SubmitAnswer) },
+            enabled = task.answer.isNotBlank() &&
+                task.answerStatus != TaskAnswerStatus.CHECKING,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        ) {
+            Text(if (task.answerStatus == TaskAnswerStatus.CHECKING) "Проверяем…" else "Проверить")
+        }
+        if (task.wrongAttempts >= 3) {
+            TextButton(
+                onClick = { onAction(BlockingOverlayAction.RequestAnotherTask) },
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) {
+                Text("Задание выглядит некорректным")
+            }
+        }
     } else {
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -246,6 +312,7 @@ private fun TaskGateContent(
                         TaskType.PUSH_UPS -> "Физическая пауза"
                         TaskType.CUSTOM -> "Ваше задание"
                         TaskType.ARITHMETIC -> "Задание"
+                        TaskType.LEARNING -> "Учебное задание"
                     },
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onPrimaryContainer,

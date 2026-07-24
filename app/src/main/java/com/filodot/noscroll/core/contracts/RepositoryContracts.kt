@@ -55,6 +55,8 @@ interface LearningRepository {
 
     suspend fun saveLesson(lesson: LessonPackage)
 
+    suspend fun getLesson(lessonId: String): LessonPackage?
+
     suspend fun peekNextLesson(courseId: String): LessonPackage?
 
     /** Atomically moves the returned package out of the validated offline queue. */

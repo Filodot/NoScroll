@@ -89,6 +89,18 @@ data class PendingTaskEntity(
     val prompt: String = "",
     @ColumnInfo(name = "custom_preset_id")
     val customPresetId: String? = null,
+    @ColumnInfo(name = "choices_json", defaultValue = "'[]'")
+    val choicesJson: String = "[]",
+    @ColumnInfo(name = "expected_choice_id")
+    val expectedChoiceId: String? = null,
+    @ColumnInfo(name = "learning_course_id")
+    val learningCourseId: String? = null,
+    @ColumnInfo(name = "learning_lesson_id")
+    val learningLessonId: String? = null,
+    @ColumnInfo(name = "learning_activity_id")
+    val learningActivityId: String? = null,
+    @ColumnInfo(name = "learning_explanation")
+    val learningExplanation: String? = null,
 )
 
 @Entity(tableName = "custom_task_presets")

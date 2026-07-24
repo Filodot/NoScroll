@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.emptyPreferences
 import com.filodot.noscroll.core.model.LimitPreset
+import com.filodot.noscroll.core.model.TaskType
 import com.filodot.noscroll.core.model.UserSettings
 import java.io.File
 import java.time.Instant
@@ -57,6 +58,8 @@ class DataStoreSettingsRepositoryTest {
             shortsIntervalMinutes = 17,
             dailyLimitEnabled = true,
             dailyLimitMinutes = 135,
+            enabledTaskTypes = setOf(TaskType.ARITHMETIC, TaskType.LEARNING),
+            selectedLearningCourseIds = setOf("course-python", "course-sql"),
             preset = LimitPreset.CUSTOM,
             emergencyActive = true,
             accessibilityDisclosureAcceptedAt = Instant.parse("2026-07-14T01:02:03Z"),

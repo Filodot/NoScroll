@@ -90,6 +90,12 @@ fun PendingTask.toEntity(): PendingTaskEntity = PendingTaskEntity(
     completionMode = completionMode.name,
     prompt = prompt,
     customPresetId = customPresetId,
+    choicesJson = TaskJsonCodec.encodeChoices(choices),
+    expectedChoiceId = expectedChoiceId,
+    learningCourseId = learningCourseId,
+    learningLessonId = learningLessonId,
+    learningActivityId = learningActivityId,
+    learningExplanation = learningExplanation,
 )
 
 fun PendingTaskEntity.toModel(): PendingTask = PendingTask(
@@ -108,6 +114,12 @@ fun PendingTaskEntity.toModel(): PendingTask = PendingTask(
     completionMode = enumValueOf<TaskCompletionMode>(completionMode),
     prompt = prompt,
     customPresetId = customPresetId,
+    choices = TaskJsonCodec.decodeChoices(choicesJson),
+    expectedChoiceId = expectedChoiceId,
+    learningCourseId = learningCourseId,
+    learningLessonId = learningLessonId,
+    learningActivityId = learningActivityId,
+    learningExplanation = learningExplanation,
 )
 
 fun CustomTaskPreset.toEntity(): CustomTaskPresetEntity = CustomTaskPresetEntity(
