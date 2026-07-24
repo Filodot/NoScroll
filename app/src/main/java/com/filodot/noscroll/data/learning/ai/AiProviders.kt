@@ -8,6 +8,7 @@ import com.filodot.noscroll.core.learning.ai.AiProviderId
 import com.filodot.noscroll.core.learning.ai.AiTextProvider
 import java.io.IOException
 import java.time.Instant
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -182,6 +183,7 @@ private suspend fun <T> providerCall(
         cause = error,
     )
 } catch (error: Exception) {
+    if (error is CancellationException) throw error
     throw invalidResponse(providerId, "Не удалось разобрать ответ", error)
 }
 

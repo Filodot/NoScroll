@@ -18,6 +18,7 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.util.zip.ZipInputStream
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.xmlpull.v1.XmlPullParser
@@ -47,6 +48,7 @@ class AndroidLearningMaterialGateway(
         } catch (error: LearningMaterialImportException) {
             throw error
         } catch (error: Exception) {
+            if (error is CancellationException) throw error
             throw failure(
                 LearningMaterialImportException.Reason.READ_FAILED,
                 "Не удалось прочитать выбранный файл",
@@ -84,6 +86,7 @@ class AndroidLearningMaterialGateway(
         } catch (error: LearningMaterialImportException) {
             throw error
         } catch (error: Exception) {
+            if (error is CancellationException) throw error
             throw failure(
                 LearningMaterialImportException.Reason.CORRUPTED_FILE,
                 "Файл повреждён или имеет неподдерживаемую структуру",

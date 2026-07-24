@@ -1,4 +1,4 @@
-# Стабилизация runtime 0.7
+# Стабилизация runtime 0.7–0.8
 
 ## Исправленные причины отказа
 
@@ -15,8 +15,9 @@
 
 ## Установка APK
 
-- `0.7.0` имеет больший `versionCode` и устанавливается поверх `0.6.x`, если APK подписаны одним сертификатом.
-- Release-вариант не является debuggable, запрещает cleartext traffic и не запрашивает Internet, overlay, notification или широкий `QUERY_ALL_PACKAGES`.
+- `0.8.0` имеет `versionCode 10` и устанавливается поверх `0.6.x`/`0.7.x`, если APK подписаны одним сертификатом.
+- Release-вариант не является debuggable, запрещает cleartext traffic и не запрашивает overlay,
+  notification или широкий `QUERY_ALL_PACKAGES`. `INTERNET` нужен только для явной AI-генерации.
 - На Android 13+ sideload-приложению может потребоваться: «О приложении» → меню `⋮` → «Разрешить ограниченные настройки», затем включение NoScroll в Accessibility. Onboarding и экран настроек объясняют этот путь. Это ограничение Android нельзя корректно отключить из приложения.
 - Полностью убрать предупреждение о неизвестном источнике можно только распространением через доверенный магазин и Play App Signing.
 
@@ -24,7 +25,7 @@
 
 Перед выдачей APK обязательны:
 
-1. `testDebugUnitTest` — модели, policy, detector, Room CRUD, атомарная выдача доступа, миграции 1→5, DataStore, временные interruptions и восстановление нагрузки после суток.
+1. `testDebugUnitTest` — модели, policy, detector, Room CRUD, атомарная выдача доступа, миграции 1→8, DataStore, AI failover, импорт, генерация, sandbox и восстановление после process death.
 2. `lintDebug` — Android/Compose lint с `warningsAsErrors=true`.
 3. `assembleDebug` и `assembleRelease`.
 4. Проверка `apksigner verify --verbose --print-certs` и совпадения сертификата debug/release.

@@ -12,6 +12,7 @@ class ResilientAiGateway(
 ) : AiGateway {
     private val providersById = providers.associateBy(AiTextProvider::id)
     private val failures = mutableMapOf<AiProviderId, FailureState>()
+    private val failureLock = Any()
 
     override suspend fun generate(request: AiGenerationRequest): AiGenerationResponse {
         val providerSettings = credentials.settings.value
@@ -35,7 +36,7 @@ class ResilientAiGateway(
             if (apiKey.isNullOrBlank()) return@forEach
             try {
                 return provider.generate(request, apiKey, settings.modelId).also {
-                    failures.remove(settings.id)
+                    clearFailure(settings.id)
                 }
             } catch (error: AiProviderException) {
                 errors += AiProviderFailure(settings.id, error.kind, error.message.orEmpty())
@@ -47,22 +48,32 @@ class ResilientAiGateway(
 
     private fun recordFailure(error: AiProviderException) {
         if (!error.retryable) return
-        val previous = failures[error.providerId]
-        val count = (previous?.count ?: 0) + 1
-        failures[error.providerId] = FailureState(
-            count = count,
-            openedAt = if (count >= failureThreshold) now() else previous?.openedAt,
-        )
+        synchronized(failureLock) {
+            val previous = failures[error.providerId]
+            val count = (previous?.count ?: 0) + 1
+            failures[error.providerId] = FailureState(
+                count = count,
+                openedAt = if (count >= failureThreshold) now() else previous?.openedAt,
+            )
+        }
     }
 
-    private fun isCircuitOpen(providerId: AiProviderId): Boolean {
-        val state = failures[providerId] ?: return false
-        val openedAt = state.openedAt ?: return false
-        if (Duration.between(openedAt, now()) >= circuitCooldown) {
-            failures.remove(providerId)
-            return false
+    private fun isCircuitOpen(providerId: AiProviderId): Boolean =
+        synchronized(failureLock) {
+            val state = failures[providerId] ?: return@synchronized false
+            val openedAt = state.openedAt ?: return@synchronized false
+            if (Duration.between(openedAt, now()) >= circuitCooldown) {
+                failures.remove(providerId)
+                false
+            } else {
+                true
+            }
         }
-        return true
+
+    private fun clearFailure(providerId: AiProviderId) {
+        synchronized(failureLock) {
+            failures.remove(providerId)
+        }
     }
 
     private data class FailureState(

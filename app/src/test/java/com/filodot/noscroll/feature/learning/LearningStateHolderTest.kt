@@ -298,6 +298,25 @@ class LearningStateHolderTest {
         )
     }
 
+    @Test
+    fun `confirmed course deletion removes all local learning data`() = runTest {
+        val repository = repository()
+        val holder = holder(repository)
+        runCurrent()
+        holder.dispatch(LearningAction.OpenCourse(StaticLearningCatalog.pythonCourse.id))
+        runCurrent()
+
+        holder.dispatch(LearningAction.RequestDeleteCourse)
+        assertTrue(holder.state.value.deleteCourseConfirmation)
+        holder.dispatch(LearningAction.ConfirmDeleteCourse)
+        runCurrent()
+
+        assertEquals(null, repository.getCourseContent(StaticLearningCatalog.pythonCourse.id))
+        assertEquals(null, repository.getLesson(StaticLearningCatalog.firstLesson.id))
+        assertEquals(LearningPane.COURSES, holder.state.value.pane)
+        assertTrue(holder.state.value.message.orEmpty().contains("удалены"))
+    }
+
     private suspend fun kotlinx.coroutines.test.TestScope.openFirstLesson(
         holder: LearningStateHolder,
     ) {

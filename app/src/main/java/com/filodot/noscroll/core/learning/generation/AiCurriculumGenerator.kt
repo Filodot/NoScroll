@@ -14,6 +14,7 @@ import com.filodot.noscroll.core.learning.model.SourceCitation
 import java.util.Locale
 import java.util.UUID
 import kotlin.math.roundToInt
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -102,6 +103,7 @@ class AiCurriculumGenerator(
                 }
                 feedback = quality.issues.ifEmpty { listOf("quality score ${quality.score}") }
             } catch (error: Exception) {
+                if (error is CancellationException) throw error
                 lastCause = error
                 feedback = listOf(
                     "Ответ не удалось разобрать или проверить: " +

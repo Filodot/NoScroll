@@ -5,6 +5,7 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
+import com.filodot.noscroll.core.learning.importing.LearningMaterialImportException
 import java.io.ByteArrayOutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -69,5 +70,25 @@ class AndroidLearningMaterialGatewayTest {
         assertEquals(1, sections.size)
         assertEquals(1, sections.single().pageNumber)
         assertTrue(sections.single().text.contains("Learning PDF"))
+    }
+
+    @Test
+    fun `rejects docx without a main document entry`() {
+        val bytes = ByteArrayOutputStream().use { output ->
+            ZipOutputStream(output).use { zip ->
+                zip.putNextEntry(ZipEntry("word/styles.xml"))
+                zip.write("<styles/>".toByteArray())
+                zip.closeEntry()
+            }
+            output.toByteArray()
+        }
+
+        val error = runCatching { gateway.extractDocx(bytes) }.exceptionOrNull()
+
+        assertTrue(error is LearningMaterialImportException)
+        assertEquals(
+            LearningMaterialImportException.Reason.CORRUPTED_FILE,
+            (error as LearningMaterialImportException).reason,
+        )
     }
 }

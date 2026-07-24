@@ -539,6 +539,51 @@ private fun CoursePane(
             Text("Редактировать план")
         }
     }
+    OutlinedButton(
+        onClick = { onAction(LearningAction.RequestDeleteCourse) },
+        enabled = !state.generatingPlan && !state.generatingLesson && !state.deletingCourse,
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+    ) {
+        Text(if (state.deletingCourse) "Удаляем…" else "Удалить курс")
+    }
+    if (state.deleteCourseConfirmation) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.errorContainer,
+            ),
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    "Удалить курс безвозвратно?",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+                Text(
+                    "Будут удалены план, извлечённый текст материалов, уроки, попытки и прогресс.",
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+                Button(
+                    onClick = { onAction(LearningAction.ConfirmDeleteCourse) },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) {
+                    Text("Удалить навсегда")
+                }
+                TextButton(
+                    onClick = { onAction(LearningAction.CancelDeleteCourse) },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                ) {
+                    Text("Отмена")
+                }
+            }
+        }
+    }
     Heading("План курса", small = true)
     if (content.curriculumNodes.isEmpty()) {
         Card(modifier = Modifier.fillMaxWidth()) {

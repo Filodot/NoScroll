@@ -43,6 +43,7 @@ import com.filodot.noscroll.core.model.TaskDifficulty
 import java.time.Instant
 import java.util.Locale
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -146,6 +147,7 @@ class AiLessonGenerator(
                 if (issues.isEmpty()) return lesson
                 feedback = issues
             } catch (error: Exception) {
+                if (error is CancellationException) throw error
                 lastCause = error
                 feedback = listOf(
                     "Ответ не прошёл проверку: " +

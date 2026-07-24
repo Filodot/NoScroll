@@ -46,6 +46,7 @@ import com.filodot.noscroll.core.learning.progress.MasteryPolicy
 import java.time.Instant
 import java.time.ZoneId
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -98,6 +99,8 @@ data class LearningUiState(
     val lastPlanProviderLabel: String? = null,
     val generatingLesson: Boolean = false,
     val checkingAnswer: Boolean = false,
+    val deleteCourseConfirmation: Boolean = false,
+    val deletingCourse: Boolean = false,
     val selectedCourse: LearningCourseContent? = null,
     val selectedCourseMasteryPercent: Int = 0,
     val readyLessons: Int = 0,
@@ -140,6 +143,9 @@ sealed interface LearningAction {
     data object AddPlanNode : LearningAction
     data object ConfirmPlan : LearningAction
     data object GenerateNextLesson : LearningAction
+    data object RequestDeleteCourse : LearningAction
+    data object CancelDeleteCourse : LearningAction
+    data object ConfirmDeleteCourse : LearningAction
     data object CreateDemoCourse : LearningAction
     data class OpenCourse(val courseId: String) : LearningAction
     data object BackToCourses : LearningAction
@@ -301,6 +307,15 @@ class LearningStateHolder(
             LearningAction.AddPlanNode -> scope.launch { addPlanNode() }
             LearningAction.ConfirmPlan -> scope.launch { confirmPlan() }
             LearningAction.GenerateNextLesson -> scope.launch { generateNextLesson() }
+            LearningAction.RequestDeleteCourse -> mutableState.update {
+                it.copy(deleteCourseConfirmation = true, message = null)
+            }
+
+            LearningAction.CancelDeleteCourse -> mutableState.update {
+                it.copy(deleteCourseConfirmation = false)
+            }
+
+            LearningAction.ConfirmDeleteCourse -> scope.launch { deleteSelectedCourse() }
             LearningAction.CreateDemoCourse -> scope.launch { createDemoCourse() }
             is LearningAction.OpenCourse -> scope.launch { openCourse(action.courseId) }
             LearningAction.BackToCourses -> mutableState.update {
@@ -310,6 +325,7 @@ class LearningStateHolder(
                     lesson = null,
                     planDirty = false,
                     lastPlanProviderLabel = null,
+                    deleteCourseConfirmation = false,
                     message = null,
                 )
             }
@@ -436,6 +452,7 @@ class LearningStateHolder(
                 )
             }
         } catch (error: Exception) {
+            if (error is CancellationException) throw error
             mutableState.update {
                 it.copy(
                     generatingPlan = false,
@@ -624,6 +641,7 @@ class LearningStateHolder(
                 )
             }
         } catch (error: Exception) {
+            if (error is CancellationException) throw error
             mutableState.update {
                 it.copy(
                     generatingLesson = false,
@@ -671,6 +689,38 @@ class LearningStateHolder(
         openCourse(courseId)
     }
 
+    private suspend fun deleteSelectedCourse() {
+        val courseId = mutableState.value.selectedCourse?.course?.id ?: return
+        if (mutableState.value.deletingCourse) return
+        planSaveJob?.cancel()
+        mutableState.update {
+            it.copy(deletingCourse = true, deleteCourseConfirmation = false, message = null)
+        }
+        try {
+            repository.deleteCourse(courseId)
+            mutableState.update {
+                it.copy(
+                    deletingCourse = false,
+                    pane = LearningPane.COURSES,
+                    selectedCourse = null,
+                    lesson = null,
+                    readyLessons = 0,
+                    selectedCourseMasteryPercent = 0,
+                    planDirty = false,
+                    message = "Курс и все его локальные материалы удалены",
+                )
+            }
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            mutableState.update {
+                it.copy(
+                    deletingCourse = false,
+                    message = error.message?.take(300) ?: "Не удалось удалить курс",
+                )
+            }
+        }
+    }
+
     private suspend fun importMaterial(reference: String) {
         val gateway = materialGateway
         if (gateway == null) {
@@ -715,7 +765,8 @@ class LearningStateHolder(
             mutableState.update {
                 it.copy(importingMaterial = false, message = error.message ?: "Не удалось импортировать")
             }
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
             mutableState.update {
                 it.copy(
                     importingMaterial = false,

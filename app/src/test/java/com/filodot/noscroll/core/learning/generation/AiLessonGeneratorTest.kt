@@ -19,6 +19,7 @@ import com.filodot.noscroll.core.learning.model.LearningSourceType
 import com.filodot.noscroll.core.learning.model.LessonPackageStatus
 import com.filodot.noscroll.core.learning.model.SourceCitation
 import java.time.Instant
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -76,6 +77,17 @@ class AiLessonGeneratorTest {
         assertTrue(lesson.activities.any { it.content.kind == ActivityKind.MINI_CODE })
         assertTrue(gateway.requests.single().userPrompt.contains("CREATE TABLE"))
         assertTrue(gateway.requests.single().userPrompt.contains("скрытый"))
+    }
+
+    @Test(expected = CancellationException::class)
+    fun `lesson cancellation stops regeneration attempts`() {
+        runBlocking {
+            val gateway = AiGateway {
+                throw CancellationException("screen closed")
+            }
+
+            AiLessonGenerator(gateway).generate(topicCourse(), emptyList())
+        }
     }
 
     @Test

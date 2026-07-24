@@ -13,6 +13,7 @@ import com.filodot.noscroll.core.learning.model.LearningSource
 import com.filodot.noscroll.core.learning.model.LearningSourceChunk
 import com.filodot.noscroll.core.learning.model.LearningSourceType
 import java.time.Instant
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -80,6 +81,17 @@ class AiCurriculumGeneratorTest {
         assertEquals("chunk-0", selected.first().id)
         assertEquals("chunk-99", selected.last().id)
         assertTrue(selected.all { it.text.length == 2_400 })
+    }
+
+    @Test(expected = CancellationException::class)
+    fun `generation cancellation stops quality retries`() {
+        runBlocking {
+            val gateway = AiGateway {
+                throw CancellationException("screen closed")
+            }
+
+            AiCurriculumGenerator(gateway).generate(topicCourse())
+        }
     }
 
     private class QueueGateway(

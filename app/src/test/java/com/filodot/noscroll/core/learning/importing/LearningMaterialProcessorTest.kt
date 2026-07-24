@@ -99,4 +99,32 @@ class LearningMaterialProcessorTest {
             Instant.EPOCH,
         )
     }
+
+    @Test
+    fun `rejects extracted material above configured character budget`() {
+        val processor = LearningMaterialProcessor(
+            targetChunkCharacters = 200,
+            maximumChunkCharacters = 200,
+            maximumMaterialCharacters = 200,
+        )
+
+        val error = runCatching {
+            processor.prepare(
+                "course",
+                "source",
+                LearningMaterialDocument(
+                    "Large",
+                    LearningSourceType.PLAIN_TEXT,
+                    listOf(MaterialSection("x".repeat(201))),
+                ),
+                Instant.EPOCH,
+            )
+        }.exceptionOrNull()
+
+        assertTrue(error is LearningMaterialImportException)
+        assertEquals(
+            LearningMaterialImportException.Reason.FILE_TOO_LARGE,
+            (error as LearningMaterialImportException).reason,
+        )
+    }
 }

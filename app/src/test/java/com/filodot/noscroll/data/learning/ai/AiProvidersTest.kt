@@ -3,6 +3,7 @@ package com.filodot.noscroll.data.learning.ai
 import com.filodot.noscroll.core.learning.ai.AiGenerationRequest
 import com.filodot.noscroll.core.learning.ai.AiProviderId
 import java.time.Instant
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -80,6 +81,17 @@ class AiProvidersTest {
 
         assertEquals("""{"ok":true}""", result.json)
         assertTrue(transport.request.body.contains("\"require_parameters\":true"))
+    }
+
+    @Test(expected = CancellationException::class)
+    fun `provider transport cancellation is never converted to a retryable failure`() {
+        runBlocking {
+            val transport = AiHttpTransport {
+                throw CancellationException("screen closed")
+            }
+
+            GeminiAiProvider(transport).generate(request, "gemini-secret", "gemini-3.6-flash")
+        }
     }
 
     private class RecordingTransport(
