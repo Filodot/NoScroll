@@ -95,6 +95,7 @@ fun PendingTask.toEntity(): PendingTaskEntity = PendingTaskEntity(
     learningCourseId = learningCourseId,
     learningLessonId = learningLessonId,
     learningActivityId = learningActivityId,
+    learningMaterial = learningMaterial,
     learningExplanation = learningExplanation,
 )
 
@@ -119,6 +120,7 @@ fun PendingTaskEntity.toModel(): PendingTask = PendingTask(
     learningCourseId = learningCourseId,
     learningLessonId = learningLessonId,
     learningActivityId = learningActivityId,
+    learningMaterial = learningMaterial,
     learningExplanation = learningExplanation,
 )
 

@@ -692,11 +692,38 @@ private fun LessonPane(
         Text("← Вернуться к курсу")
     }
     Heading(lesson.title)
+    if (state.showingLessonMaterial) {
+        Text(
+            "Мини-урок · сначала изучите материал",
+            color = MaterialTheme.colorScheme.primary,
+            style = MaterialTheme.typography.labelLarge,
+        )
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            ),
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Text("Материал урока", style = MaterialTheme.typography.titleLarge)
+                Text(lesson.introduction, style = MaterialTheme.typography.bodyLarge)
+                Button(
+                    onClick = { onAction(LearningAction.OpenLessonQuestions) },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                ) {
+                    Text("Перейти к заданиям")
+                }
+            }
+        }
+        return
+    }
     Text(
         "Задание ${state.activityIndex + 1} из ${lesson.activities.size}",
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    Text(lesson.introduction, style = MaterialTheme.typography.bodyLarge)
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(20.dp),

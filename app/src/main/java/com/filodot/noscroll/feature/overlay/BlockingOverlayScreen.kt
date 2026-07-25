@@ -193,6 +193,31 @@ private fun TaskGateContent(
                 }
             }
         }
+    } else if (task.showingLearningMaterial && !task.learningMaterial.isNullOrBlank()) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            ),
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Text("Мини-урок", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "Сначала изучите материал. Следующий экран проверит его понимание.",
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                Text(task.learningMaterial, style = MaterialTheme.typography.bodyLarge)
+                Button(
+                    onClick = { onAction(BlockingOverlayAction.OpenTaskQuestion) },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                ) {
+                    Text("Перейти к заданию")
+                }
+            }
+        }
     } else if (task.completionMode == TaskCompletionMode.CHECKED_ANSWER) {
         Text(
             text = task.visualExpression,

@@ -58,6 +58,26 @@ class LearningStateHolderTest {
     }
 
     @Test
+    fun `lesson requires reading material before accepting an answer`() = runTest {
+        val holder = holder(repository())
+        runCurrent()
+        holder.dispatch(LearningAction.OpenCourse(StaticLearningCatalog.pythonCourse.id))
+        runCurrent()
+        holder.dispatch(LearningAction.StartLesson)
+        runCurrent()
+
+        assertTrue(holder.state.value.showingLessonMaterial)
+        holder.dispatch(LearningAction.SelectOption("a", multiple = false))
+        assertTrue(holder.state.value.selectedOptionIds.isEmpty())
+
+        holder.dispatch(LearningAction.OpenLessonQuestions)
+        holder.dispatch(LearningAction.SelectOption("a", multiple = false))
+
+        assertEquals(false, holder.state.value.showingLessonMaterial)
+        assertEquals(setOf("a"), holder.state.value.selectedOptionIds)
+    }
+
+    @Test
     fun `wrong answer does not unlock continue action`() = runTest {
         val repository = repository()
         val holder = holder(repository)
@@ -324,6 +344,7 @@ class LearningStateHolderTest {
         runCurrent()
         holder.dispatch(LearningAction.StartLesson)
         runCurrent()
+        holder.dispatch(LearningAction.OpenLessonQuestions)
     }
 
     private fun kotlinx.coroutines.test.TestScope.holder(

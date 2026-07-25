@@ -28,7 +28,7 @@ class NoScrollMigrationTest {
     }
 
     @Test
-    fun migrationOneToEightPreservesUsageAndInitializesNewColumns() = runBlocking {
+    fun migrationOneToNinePreservesUsageAndInitializesNewColumns() = runBlocking {
         createVersionOneDatabase()
 
         val database = Room.databaseBuilder(context, NoScrollDatabase::class.java, databaseName)
@@ -48,7 +48,7 @@ class NoScrollMigrationTest {
     }
 
     @Test
-    fun migrationTwoToEightPreservesPendingGateAndAddsAllDefaults() = runBlocking {
+    fun migrationTwoToNinePreservesPendingGateAndAddsAllDefaults() = runBlocking {
         createVersionTwoDatabase()
 
         val database = Room.databaseBuilder(context, NoScrollDatabase::class.java, databaseName)
@@ -59,6 +59,7 @@ class NoScrollMigrationTest {
                 NoScrollDatabase.MIGRATION_5_6,
                 NoScrollDatabase.MIGRATION_6_7,
                 NoScrollDatabase.MIGRATION_7_8,
+                NoScrollDatabase.MIGRATION_8_9,
             )
             .allowMainThreadQueries()
             .build()
@@ -76,11 +77,12 @@ class NoScrollMigrationTest {
         assertEquals(com.filodot.noscroll.core.model.TaskTrigger.INTERVAL, task.trigger)
         assertEquals(emptyList<com.filodot.noscroll.core.model.TaskChoice>(), task.choices)
         assertEquals(null, task.learningCourseId)
+        assertEquals(null, task.learningMaterial)
         database.close()
     }
 
     @Test
-    fun migrationThreeToEightPreservesVersionThreeState() = runBlocking {
+    fun migrationThreeToNinePreservesVersionThreeState() = runBlocking {
         createVersionThreeDatabase()
 
         val database = Room.databaseBuilder(context, NoScrollDatabase::class.java, databaseName)
@@ -90,6 +92,7 @@ class NoScrollMigrationTest {
                 NoScrollDatabase.MIGRATION_5_6,
                 NoScrollDatabase.MIGRATION_6_7,
                 NoScrollDatabase.MIGRATION_7_8,
+                NoScrollDatabase.MIGRATION_8_9,
             )
             .allowMainThreadQueries()
             .build()

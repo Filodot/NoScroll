@@ -43,6 +43,7 @@ class LearningGateTaskFactoryTest {
         assertEquals(3, task.choices.size)
         assertEquals(StaticLearningCatalog.firstLesson.id, task.learningLessonId)
         assertEquals("python-variable-choice", task.learningActivityId)
+        assertEquals(StaticLearningCatalog.firstLesson.introduction, task.learningMaterial)
         assertEquals(TaskDifficulty.HARD, task.difficulty)
     }
 

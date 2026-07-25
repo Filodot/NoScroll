@@ -97,6 +97,7 @@ class LearningGateTaskFactory(
                         learningCourseId = course.id,
                         learningLessonId = lesson.id,
                         learningActivityId = activity.id,
+                        learningMaterial = lesson.introduction,
                         learningExplanation = activity.explanation,
                     )
                 }

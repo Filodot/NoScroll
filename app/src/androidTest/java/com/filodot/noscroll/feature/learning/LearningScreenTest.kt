@@ -29,6 +29,9 @@ class LearningScreenTest {
 
         composeRule.onNodeWithText("Открыть курс").performClick()
         composeRule.onNodeWithText("Начать следующий урок").performClick()
+        composeRule.onNodeWithText("Материал урока").assertIsDisplayed()
+        composeRule.onNodeWithText("age = 18").assertDoesNotExist()
+        composeRule.onNodeWithText("Перейти к заданиям").performClick()
         composeRule.onNodeWithText("age = 18").performClick()
         composeRule.onNodeWithText("Проверить").assertIsEnabled().performClick()
         composeRule.onNodeWithText("Следующее задание").performClick()
@@ -52,6 +55,7 @@ class LearningScreenTest {
 
         composeRule.onNodeWithText("Открыть курс").performClick()
         composeRule.onNodeWithText("Начать следующий урок").performClick()
+        composeRule.onNodeWithText("Перейти к заданиям").performClick()
         composeRule.onNodeWithText("Задание выглядит некорректным").performClick()
 
         composeRule.onNodeWithText("Подозрительное задание заменено без штрафа")

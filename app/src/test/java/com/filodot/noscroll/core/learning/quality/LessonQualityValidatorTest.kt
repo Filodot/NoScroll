@@ -33,6 +33,19 @@ class LessonQualityValidatorTest {
     }
 
     @Test
+    fun `lesson rejects a teaser instead of teaching material`() {
+        val lesson = StaticLearningCatalog.firstLesson.copy(
+            introduction = "Сейчас будет короткий тест.",
+        )
+
+        val result = validator.validate(lesson)
+
+        assertTrue(
+            result.issues.any { it.code == LessonValidationCode.INVALID_INTRODUCTION },
+        )
+    }
+
+    @Test
     fun `single choice rejects an answer missing from options`() {
         val activity = StaticLearningCatalog.firstLesson.activities.first().copy(
             content = SingleChoiceContent(

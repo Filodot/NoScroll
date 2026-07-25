@@ -108,6 +108,35 @@ class BlockingOverlayStateHolderTest {
     }
 
     @Test
+    fun `learning gate blocks answers until material is read`() {
+        val effects = mutableListOf<BlockingOverlayEffect>()
+        val holder = BlockingOverlayStateHolder(
+            initialEnforcement = taskState().copy(
+                completionMode = TaskCompletionMode.SINGLE_CHOICE,
+                choices = listOf(TaskChoice("a", "Первый"), TaskChoice("b", "Второй")),
+                learningMaterial = "Обучающий материал",
+                showingLearningMaterial = true,
+            ),
+            emitEffect = effects::add,
+        )
+
+        holder.dispatch(BlockingOverlayAction.SelectChoice("a"))
+        holder.dispatch(BlockingOverlayAction.SubmitAnswer)
+        assertEquals("", task(holder).answer)
+        assertTrue(effects.isEmpty())
+
+        holder.dispatch(BlockingOverlayAction.OpenTaskQuestion)
+        holder.dispatch(BlockingOverlayAction.SelectChoice("a"))
+        holder.dispatch(BlockingOverlayAction.SubmitAnswer)
+
+        assertEquals(false, task(holder).showingLearningMaterial)
+        assertEquals(
+            BlockingOverlayEffect.VerifyAnswer(taskId = "task-1", answer = "a"),
+            effects.single(),
+        )
+    }
+
+    @Test
     fun `daily threshold atomically replaces task even while emergency form is open`() {
         val holder = holder()
         holder.dispatch(BlockingOverlayAction.OpenEmergencyForm)

@@ -99,6 +99,8 @@ data class PendingTaskEntity(
     val learningLessonId: String? = null,
     @ColumnInfo(name = "learning_activity_id")
     val learningActivityId: String? = null,
+    @ColumnInfo(name = "learning_material")
+    val learningMaterial: String? = null,
     @ColumnInfo(name = "learning_explanation")
     val learningExplanation: String? = null,
 )

@@ -980,6 +980,8 @@ class MonitoringCoordinator(
             type = type,
             completionMode = completionMode,
             choices = choices,
+            learningMaterial = learningMaterial,
+            showingLearningMaterial = !learningMaterial.isNullOrBlank(),
             explanation = learningExplanation,
         )
     }

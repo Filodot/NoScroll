@@ -25,6 +25,8 @@ sealed interface EnforcementUiState {
         val type: TaskType = TaskType.ARITHMETIC,
         val completionMode: TaskCompletionMode = TaskCompletionMode.CHECKED_ANSWER,
         val choices: List<TaskChoice> = emptyList(),
+        val learningMaterial: String? = null,
+        val showingLearningMaterial: Boolean = !learningMaterial.isNullOrBlank(),
         val explanation: String? = null,
         val answer: String = "",
         val wrongAttempts: Int = 0,
@@ -73,6 +75,7 @@ data class BlockingOverlayUiState(
 sealed interface BlockingOverlayAction {
     data class UpdateAnswer(val value: String) : BlockingOverlayAction
     data class SelectChoice(val choiceId: String) : BlockingOverlayAction
+    data object OpenTaskQuestion : BlockingOverlayAction
     data object SubmitAnswer : BlockingOverlayAction
     data class AnswerChecked(val correct: Boolean) : BlockingOverlayAction
     data object RequestAnotherTask : BlockingOverlayAction
@@ -128,6 +131,7 @@ class BlockingOverlayStateHolder(
         when (action) {
             is BlockingOverlayAction.UpdateAnswer -> updateAnswer(action.value)
             is BlockingOverlayAction.SelectChoice -> selectChoice(action.choiceId)
+            BlockingOverlayAction.OpenTaskQuestion -> openTaskQuestion()
             BlockingOverlayAction.SubmitAnswer -> submitAnswer()
             is BlockingOverlayAction.AnswerChecked -> handleAnswerResult(action.correct)
             BlockingOverlayAction.RequestAnotherTask -> requestAnotherTask()
@@ -151,6 +155,7 @@ class BlockingOverlayStateHolder(
         val current = mutableState.value
         if (current.emergencyForm != null) return
         val task = current.enforcement as? EnforcementUiState.TaskGate ?: return
+        if (task.showingLearningMaterial) return
         if (task.completionMode != TaskCompletionMode.CHECKED_ANSWER) return
         if (task.answerStatus == TaskAnswerStatus.CHECKING ||
             task.answerStatus == TaskAnswerStatus.CORRECT
@@ -170,7 +175,8 @@ class BlockingOverlayStateHolder(
         val current = mutableState.value
         if (current.emergencyForm != null) return
         val task = current.enforcement as? EnforcementUiState.TaskGate ?: return
-        if (task.completionMode != TaskCompletionMode.SINGLE_CHOICE ||
+        if (task.showingLearningMaterial ||
+            task.completionMode != TaskCompletionMode.SINGLE_CHOICE ||
             task.answerStatus == TaskAnswerStatus.CHECKING ||
             task.answerStatus == TaskAnswerStatus.CORRECT ||
             task.choices.none { it.id == choiceId }
@@ -185,11 +191,22 @@ class BlockingOverlayStateHolder(
         )
     }
 
+    private fun openTaskQuestion() {
+        val current = mutableState.value
+        if (current.emergencyForm != null) return
+        val task = current.enforcement as? EnforcementUiState.TaskGate ?: return
+        if (!task.showingLearningMaterial || task.learningMaterial.isNullOrBlank()) return
+        mutableState.value = current.copy(
+            enforcement = task.copy(showingLearningMaterial = false),
+        )
+    }
+
     private fun submitAnswer() {
         val current = mutableState.value
         if (current.emergencyForm != null) return
         val task = current.enforcement as? EnforcementUiState.TaskGate ?: return
         if (
+            task.showingLearningMaterial ||
             (task.completionMode != TaskCompletionMode.MANUAL_CONFIRMATION &&
                 task.answer.isBlank()) ||
             task.answerStatus == TaskAnswerStatus.CHECKING ||
@@ -240,6 +257,7 @@ class BlockingOverlayStateHolder(
         mutableState.value = mutableState.value.copy(
             enforcement = task.copy(
                 answer = "",
+                showingLearningMaterial = !task.learningMaterial.isNullOrBlank(),
                 answerStatus = TaskAnswerStatus.READY,
             ),
         )

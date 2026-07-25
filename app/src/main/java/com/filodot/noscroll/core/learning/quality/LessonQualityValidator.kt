@@ -73,7 +73,10 @@ class LessonQualityValidator {
                 add(LessonValidationIssue(LessonValidationCode.INVALID_PLAN_VERSION))
             }
             if (lesson.title.isBlank()) add(LessonValidationIssue(LessonValidationCode.INVALID_TITLE))
-            if (lesson.introduction.isBlank()) {
+            val introduction = lesson.introduction.trim()
+            if (introduction.length !in MIN_INTRODUCTION_CHARACTERS..MAX_INTRODUCTION_CHARACTERS ||
+                introduction.sentenceCount() < MIN_INTRODUCTION_SENTENCES
+            ) {
                 add(LessonValidationIssue(LessonValidationCode.INVALID_INTRODUCTION))
             }
             if (lesson.activities.size !in MIN_ACTIVITIES..MAX_ACTIVITIES) {
@@ -295,6 +298,10 @@ class LessonQualityValidator {
 private fun String.countOccurrences(marker: String): Int =
     windowed(marker.length).count { it == marker }
 
+private fun String.sentenceCount(): Int =
+    split(Regex("(?<=[.!?…])\\s+"))
+        .count { it.trim().length >= MIN_SENTENCE_CHARACTERS }
+
 private fun List<com.filodot.noscroll.core.learning.model.CodeTestCase>.anyInvalid(): Boolean =
     size > MAX_CODE_TESTS ||
         any {
@@ -310,6 +317,10 @@ private const val BLANK_MARKER = "{{blank}}"
 private const val CODE_MARKER = "{{code}}"
 private const val MIN_ACTIVITIES = 1
 private const val MAX_ACTIVITIES = 5
+private const val MIN_INTRODUCTION_CHARACTERS = 250
+private const val MAX_INTRODUCTION_CHARACTERS = 4_000
+private const val MIN_INTRODUCTION_SENTENCES = 3
+private const val MIN_SENTENCE_CHARACTERS = 15
 private const val MIN_ACTIVITY_SECONDS = 15
 private const val MAX_ACTIVITY_SECONDS = 300
 private const val MIN_LESSON_SECONDS = 30

@@ -105,6 +105,7 @@ data class LearningUiState(
     val selectedCourseMasteryPercent: Int = 0,
     val readyLessons: Int = 0,
     val lesson: LessonPackage? = null,
+    val showingLessonMaterial: Boolean = false,
     val activityIndex: Int = 0,
     val selectedOptionIds: Set<String> = emptySet(),
     val orderedItemIds: List<String> = emptyList(),
@@ -151,6 +152,7 @@ sealed interface LearningAction {
     data object BackToCourses : LearningAction
     data object StartLesson : LearningAction
     data object BackToCourse : LearningAction
+    data object OpenLessonQuestions : LearningAction
     data class SelectOption(val optionId: String, val multiple: Boolean) : LearningAction
     data class MoveOrderedItem(val itemId: String, val direction: Int) : LearningAction
     data class SetMatch(val leftId: String, val rightId: String) : LearningAction
@@ -323,6 +325,7 @@ class LearningStateHolder(
                     pane = LearningPane.COURSES,
                     selectedCourse = null,
                     lesson = null,
+                    showingLessonMaterial = false,
                     planDirty = false,
                     lastPlanProviderLabel = null,
                     deleteCourseConfirmation = false,
@@ -332,30 +335,55 @@ class LearningStateHolder(
 
             LearningAction.StartLesson -> scope.launch { startLesson() }
             LearningAction.BackToCourse -> mutableState.update {
-                it.copy(pane = LearningPane.COURSE, lesson = null, message = null)
+                it.copy(
+                    pane = LearningPane.COURSE,
+                    lesson = null,
+                    showingLessonMaterial = false,
+                    message = null,
+                )
+            }
+
+            LearningAction.OpenLessonQuestions -> mutableState.update {
+                if (it.pane == LearningPane.LESSON && it.lesson != null) {
+                    it.copy(showingLessonMaterial = false, message = null)
+                } else {
+                    it
+                }
             }
 
             is LearningAction.SelectOption -> selectOption(action)
             is LearningAction.MoveOrderedItem -> moveOrderedItem(action)
             is LearningAction.SetMatch -> mutableState.update {
-                it.copy(
-                    matchingRightIdByLeftId =
-                        it.matchingRightIdByLeftId + (action.leftId to action.rightId),
-                    answerStatus = LearningAnswerStatus.UNCHECKED,
-                )
+                if (it.showingLessonMaterial) {
+                    it
+                } else {
+                    it.copy(
+                        matchingRightIdByLeftId =
+                            it.matchingRightIdByLeftId + (action.leftId to action.rightId),
+                        answerStatus = LearningAnswerStatus.UNCHECKED,
+                    )
+                }
             }
             is LearningAction.SetTextAnswer -> mutableState.update {
-                it.copy(
-                    textAnswer = action.value.take(MAX_TEXT_ANSWER_LENGTH),
-                    answerStatus = LearningAnswerStatus.UNCHECKED,
-                )
+                if (it.showingLessonMaterial) {
+                    it
+                } else {
+                    it.copy(
+                        textAnswer = action.value.take(MAX_TEXT_ANSWER_LENGTH),
+                        answerStatus = LearningAnswerStatus.UNCHECKED,
+                    )
+                }
             }
 
             is LearningAction.SetBooleanAnswer -> mutableState.update {
-                it.copy(
-                    booleanAnswer = action.value,
-                    answerStatus = LearningAnswerStatus.UNCHECKED,
-                )
+                if (it.showingLessonMaterial) {
+                    it
+                } else {
+                    it.copy(
+                        booleanAnswer = action.value,
+                        answerStatus = LearningAnswerStatus.UNCHECKED,
+                    )
+                }
             }
 
             LearningAction.CheckAnswer -> scope.launch { checkAnswer() }
@@ -816,6 +844,7 @@ class LearningStateHolder(
                 selectedCourseMasteryPercent = masteryPercent(content.concepts, mastery),
                 readyLessons = repository.observeValidatedLessonCount(courseId).first(),
                 lesson = null,
+                showingLessonMaterial = false,
                 message = null,
             )
         }
@@ -835,6 +864,7 @@ class LearningStateHolder(
                 state = it.copy(
                     pane = LearningPane.LESSON,
                     lesson = lesson,
+                    showingLessonMaterial = true,
                     activityIndex = 0,
                     replacedActivityIds = emptySet(),
                     message = null,
@@ -846,6 +876,7 @@ class LearningStateHolder(
 
     private fun selectOption(action: LearningAction.SelectOption) {
         mutableState.update { state ->
+            if (state.showingLessonMaterial) return@update state
             val selected = if (action.multiple) {
                 if (action.optionId in state.selectedOptionIds) {
                     state.selectedOptionIds - action.optionId
@@ -864,6 +895,7 @@ class LearningStateHolder(
 
     private fun moveOrderedItem(action: LearningAction.MoveOrderedItem) {
         mutableState.update { state ->
+            if (state.showingLessonMaterial) return@update state
             val index = state.orderedItemIds.indexOf(action.itemId)
             if (index < 0) return@update state
             val target = (index + action.direction).coerceIn(0, state.orderedItemIds.lastIndex)
@@ -880,7 +912,12 @@ class LearningStateHolder(
 
     private suspend fun checkAnswer() {
         val state = mutableState.value
-        if (state.answerStatus == LearningAnswerStatus.CORRECT || state.checkingAnswer) return
+        if (state.showingLessonMaterial ||
+            state.answerStatus == LearningAnswerStatus.CORRECT ||
+            state.checkingAnswer
+        ) {
+            return
+        }
         val activity = state.currentActivity ?: return
         val answer = state.answerFor(activity.content) ?: return
         mutableState.update { it.copy(checkingAnswer = true, message = null) }
@@ -1024,6 +1061,7 @@ class LearningStateHolder(
                 selectedCourseMasteryPercent = masteryPercent(content?.concepts.orEmpty(), mastery),
                 readyLessons = repository.observeValidatedLessonCount(courseId).first(),
                 lesson = null,
+                showingLessonMaterial = false,
                 message = null,
             )
         }

@@ -45,7 +45,7 @@ abstract class NoScrollDatabase : RoomDatabase() {
 
     companion object {
         const val DATABASE_NAME = "noscroll.db"
-        const val VERSION = 8
+        const val VERSION = 9
 
         val MIGRATION_1_2 = Migration(1, 2) { database ->
             database.execSQL(
@@ -139,6 +139,24 @@ abstract class NoScrollDatabase : RoomDatabase() {
             database.execSQL("ALTER TABLE pending_tasks ADD COLUMN learning_explanation TEXT")
         }
 
+        val MIGRATION_8_9 = Migration(8, 9) { database ->
+            database.execSQL("ALTER TABLE pending_tasks ADD COLUMN learning_material TEXT")
+            database.execSQL(
+                "UPDATE pending_tasks SET learning_material = (" +
+                    "SELECT introduction FROM lesson_packages " +
+                    "WHERE lesson_packages.id = pending_tasks.learning_lesson_id" +
+                    ") WHERE task_type = 'LEARNING' AND learning_lesson_id IS NOT NULL",
+            )
+            database.execSQL(
+                "UPDATE lesson_packages SET status = 'QUARANTINED' " +
+                    "WHERE status = 'VALIDATED' AND (" +
+                    "length(trim(introduction)) < 250 OR id IN (" +
+                    "SELECT lesson_id FROM learning_activities " +
+                    "WHERE prompt_version = 'lesson-v1'" +
+                    "))",
+            )
+        }
+
         val ALL_MIGRATIONS = arrayOf(
             MIGRATION_1_2,
             MIGRATION_2_3,
@@ -147,6 +165,7 @@ abstract class NoScrollDatabase : RoomDatabase() {
             MIGRATION_5_6,
             MIGRATION_6_7,
             MIGRATION_7_8,
+            MIGRATION_8_9,
         )
 
         fun build(context: Context, name: String = DATABASE_NAME): NoScrollDatabase =

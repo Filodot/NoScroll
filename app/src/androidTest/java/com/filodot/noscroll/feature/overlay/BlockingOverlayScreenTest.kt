@@ -155,6 +155,34 @@ class BlockingOverlayScreenTest {
         composeRule.runOnIdle { check(lastAction == BlockingOverlayAction.SubmitAnswer) }
     }
 
+    @Test
+    fun learningGateShowsMaterialBeforeQuestion() {
+        var lastAction: BlockingOverlayAction? = null
+        composeRule.setOverlay(
+            BlockingOverlayUiState(
+                enforcement = task().copy(
+                    visualExpression = "Как работает присваивание?",
+                    type = TaskType.LEARNING,
+                    completionMode = TaskCompletionMode.SINGLE_CHOICE,
+                    learningMaterial = "Переменная связывает имя со значением.",
+                    showingLearningMaterial = true,
+                    choices = listOf(
+                        com.filodot.noscroll.core.model.TaskChoice("a", "Через знак ="),
+                        com.filodot.noscroll.core.model.TaskChoice("b", "Через знак =="),
+                    ),
+                ),
+            ),
+            onAction = { lastAction = it },
+        )
+
+        composeRule.onNodeWithText("Мини-урок").assertIsDisplayed()
+        composeRule.onNodeWithText("Как работает присваивание?").assertDoesNotExist()
+        composeRule.onNodeWithText("Перейти к заданию").performClick()
+        composeRule.runOnIdle {
+            check(lastAction == BlockingOverlayAction.OpenTaskQuestion)
+        }
+    }
+
     private fun androidx.compose.ui.test.junit4.ComposeContentTestRule.setOverlay(
         state: BlockingOverlayUiState,
         onAction: (BlockingOverlayAction) -> Unit = {},

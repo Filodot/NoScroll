@@ -75,5 +75,6 @@ data class PendingTask(
     val learningCourseId: String? = null,
     val learningLessonId: String? = null,
     val learningActivityId: String? = null,
+    val learningMaterial: String? = null,
     val learningExplanation: String? = null,
 )
