@@ -10,6 +10,7 @@ import com.filodot.noscroll.data.local.repository.RoomTaskGrantTransaction
 import com.filodot.noscroll.data.local.repository.RoomTaskRepository
 import com.filodot.noscroll.data.local.repository.RoomTaskPresetRepository
 import com.filodot.noscroll.data.local.repository.RoomUsageRepository
+import com.filodot.noscroll.data.local.retention.LocalDataRetention
 import com.filodot.noscroll.data.local.room.NoScrollDatabase
 import com.filodot.noscroll.data.local.security.SecureAiCredentialRepository
 import com.filodot.noscroll.core.learning.ai.ResilientAiGateway
@@ -30,15 +31,20 @@ import com.filodot.noscroll.ui.NoScrollAppGraph
 import java.time.Instant
 import java.time.LocalDate
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 class NoScrollRuntime private constructor(application: Application) {
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val database = NoScrollDatabase.build(application)
+    private val retention = LocalDataRetention(database.retentionDao())
     private val today = LocalDate.now()
     private val now = Instant.now()
 
@@ -98,6 +104,21 @@ class NoScrollRuntime private constructor(application: Application) {
         systemAccess = systemAccess,
     )
 
+    init {
+        applicationScope.launch {
+            repositoriesReady.first { it }
+            while (isActive) {
+                runCatching {
+                    retention.deleteExpired(
+                        now = Instant.now(),
+                        zoneId = java.time.ZoneId.systemDefault(),
+                    )
+                }
+                delay(RETENTION_INTERVAL_MILLIS)
+            }
+        }
+    }
+
     val appGraph = NoScrollAppGraph(
         settingsRepository = settingsRepository,
         usageRepository = usageRepository,
@@ -121,6 +142,8 @@ class NoScrollRuntime private constructor(application: Application) {
     )
 
     companion object {
+        private const val RETENTION_INTERVAL_MILLIS = 24 * 60 * 60 * 1_000L
+
         fun create(application: Application): NoScrollRuntime = NoScrollRuntime(application)
     }
 }

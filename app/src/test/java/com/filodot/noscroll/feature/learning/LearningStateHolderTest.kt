@@ -13,6 +13,7 @@ import com.filodot.noscroll.core.learning.importing.LearningMaterialGateway
 import com.filodot.noscroll.core.learning.importing.MaterialSection
 import com.filodot.noscroll.core.learning.model.AttemptResult
 import com.filodot.noscroll.core.learning.model.LearningCourseContent
+import com.filodot.noscroll.core.learning.model.LearningAttempt
 import com.filodot.noscroll.core.learning.model.CourseOrigin
 import com.filodot.noscroll.core.learning.model.CourseStatus
 import com.filodot.noscroll.core.learning.model.CurriculumNode
@@ -23,9 +24,11 @@ import com.filodot.noscroll.core.learning.model.LearningConcept
 import com.filodot.noscroll.core.learning.model.CodeLanguage
 import com.filodot.noscroll.core.learning.model.CodeTestCase
 import com.filodot.noscroll.core.learning.model.MiniCodeContent
+import com.filodot.noscroll.core.learning.model.SelfConfidence
 import com.filodot.noscroll.core.testing.InMemoryAiCredentialRepository
 import com.filodot.noscroll.core.testing.InMemoryLearningRepository
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
@@ -75,6 +78,38 @@ class LearningStateHolderTest {
 
         assertEquals(false, holder.state.value.showingLessonMaterial)
         assertEquals(setOf("a"), holder.state.value.selectedOptionIds)
+    }
+
+    @Test
+    fun `reopening lesson resumes after activities completed before restart`() = runTest {
+        val repository = repository()
+        val completedActivity = StaticLearningCatalog.firstLesson.activities.first()
+        repository.saveAttempt(
+            LearningAttempt(
+                id = "persisted-attempt",
+                courseId = StaticLearningCatalog.pythonCourse.id,
+                lessonId = StaticLearningCatalog.firstLesson.id,
+                activityId = completedActivity.id,
+                conceptIds = completedActivity.conceptIds,
+                activityKind = completedActivity.content.kind,
+                result = AttemptResult.CORRECT,
+                hintsUsed = 0,
+                durationSeconds = 20,
+                confidence = SelfConfidence.MEDIUM,
+                occurredAt = now.minusSeconds(60),
+                localDate = LocalDate.of(2026, 7, 24),
+            ),
+        )
+        val holder = holder(repository)
+        runCurrent()
+        holder.dispatch(LearningAction.OpenCourse(StaticLearningCatalog.pythonCourse.id))
+        runCurrent()
+        holder.dispatch(LearningAction.StartLesson)
+        runCurrent()
+
+        assertEquals(1, holder.state.value.activityIndex)
+        assertEquals(setOf(completedActivity.id), holder.state.value.completedActivityIds)
+        assertTrue(holder.state.value.message.orEmpty().contains("сохранённого места"))
     }
 
     @Test

@@ -135,24 +135,37 @@ private object Keys {
 
 private fun preferencesToSettings(preferences: Preferences): UserSettings {
     val defaults = UserSettings()
+    val shortsInterval = preferences[Keys.SHORTS_INTERVAL_MINUTES]
+        ?.takeIf { it in 1..30 }
+        ?: defaults.shortsIntervalMinutes
+    val dailyLimit = preferences[Keys.DAILY_LIMIT_MINUTES]
+        ?.takeIf { it in 10..240 && it % 5 == 0 }
+        ?: defaults.dailyLimitMinutes
+    val instagramInterval = preferences[Keys.INSTAGRAM_INTERVAL_MINUTES]
+        ?.takeIf { it in 1..30 }
+        ?: defaults.instagramIntervalMinutes
+    val mediumThreshold = preferences[Keys.DIFFICULTY_MEDIUM_THRESHOLD_MINUTES]
+        ?.takeIf { it in 1..120 }
+        ?: defaults.difficultyMediumThresholdMinutes
+    val hardThreshold = preferences[Keys.DIFFICULTY_HARD_THRESHOLD_MINUTES]
+        ?.takeIf { it in (mediumThreshold + 1)..240 }
+        ?: defaults.difficultyHardThresholdMinutes
+            .coerceAtLeast(mediumThreshold + 1)
+            .coerceAtMost(240)
     return UserSettings(
         onboardingCompleted = preferences[Keys.ONBOARDING_COMPLETED]
             ?: defaults.onboardingCompleted,
         shortsGateEnabled = preferences[Keys.SHORTS_GATE_ENABLED] ?: defaults.shortsGateEnabled,
-        shortsIntervalMinutes = preferences[Keys.SHORTS_INTERVAL_MINUTES]
-            ?: defaults.shortsIntervalMinutes,
+        shortsIntervalMinutes = shortsInterval,
         dailyLimitEnabled = preferences[Keys.DAILY_LIMIT_ENABLED] ?: defaults.dailyLimitEnabled,
-        dailyLimitMinutes = preferences[Keys.DAILY_LIMIT_MINUTES] ?: defaults.dailyLimitMinutes,
+        dailyLimitMinutes = dailyLimit,
         instagramGateEnabled = preferences[Keys.INSTAGRAM_GATE_ENABLED]
             ?: defaults.instagramGateEnabled,
-        instagramIntervalMinutes = preferences[Keys.INSTAGRAM_INTERVAL_MINUTES]
-            ?: defaults.instagramIntervalMinutes,
-        difficultyMediumThresholdMinutes =
-            preferences[Keys.DIFFICULTY_MEDIUM_THRESHOLD_MINUTES]
-                ?: defaults.difficultyMediumThresholdMinutes,
-        difficultyHardThresholdMinutes = preferences[Keys.DIFFICULTY_HARD_THRESHOLD_MINUTES]
-            ?: defaults.difficultyHardThresholdMinutes,
+        instagramIntervalMinutes = instagramInterval,
+        difficultyMediumThresholdMinutes = mediumThreshold,
+        difficultyHardThresholdMinutes = hardThreshold,
         difficultyDecayBreakMinutes = preferences[Keys.DIFFICULTY_DECAY_BREAK_MINUTES]
+            ?.takeIf { it in 1..30 }
             ?: defaults.difficultyDecayBreakMinutes,
         enabledTaskTypes = preferences[Keys.ENABLED_TASK_TYPES]
             ?.split(',')
@@ -163,7 +176,8 @@ private fun preferencesToSettings(preferences: Preferences): UserSettings {
         selectedLearningCourseIds = preferences[Keys.SELECTED_LEARNING_COURSE_IDS]
             ?.split(',')
             ?.map(String::trim)
-            ?.filter(String::isNotEmpty)
+            ?.filter { it.length in 1..200 }
+            ?.take(100)
             ?.toSet()
             ?: defaults.selectedLearningCourseIds,
         preset = preferences[Keys.PRESET]
@@ -175,8 +189,10 @@ private fun preferencesToSettings(preferences: Preferences): UserSettings {
         usageDisclosureSeenAt =
             preferences[Keys.USAGE_DISCLOSURE_SEEN_AT]?.let(Instant::ofEpochMilli),
         detectorRulesVersion = preferences[Keys.DETECTOR_RULES_VERSION]
+            ?.takeIf { it > 0 }
             ?: defaults.detectorRulesVersion,
         settingsSchemaVersion = preferences[Keys.SETTINGS_SCHEMA_VERSION]
+            ?.takeIf { it > 0 }
             ?: defaults.settingsSchemaVersion,
     )
 }

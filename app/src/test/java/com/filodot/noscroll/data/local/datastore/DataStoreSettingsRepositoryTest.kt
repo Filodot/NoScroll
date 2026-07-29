@@ -4,6 +4,9 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.mutablePreferencesOf
+import androidx.datastore.preferences.core.stringPreferencesKey
 import com.filodot.noscroll.core.model.LimitPreset
 import com.filodot.noscroll.core.model.TaskType
 import com.filodot.noscroll.core.model.UserSettings
@@ -113,6 +116,27 @@ class DataStoreSettingsRepositoryTest {
         storage.allowWrite.complete(Unit)
         saveJob.join()
         assertEquals(expected, repository.settings.value)
+    }
+
+    @Test
+    fun invalidPersistedValuesRecoverToSafeDefaultsInsteadOfDisablingProtection() = runBlocking {
+        val dataStore = InMemoryPreferencesDataStore()
+        dataStore.updateData {
+            mutablePreferencesOf(
+                intPreferencesKey("shorts_interval_minutes") to -50,
+                intPreferencesKey("daily_limit_minutes") to 13,
+                intPreferencesKey("instagram_interval_minutes") to Int.MAX_VALUE,
+                intPreferencesKey("difficulty_medium_threshold_minutes") to 200,
+                intPreferencesKey("difficulty_hard_threshold_minutes") to 1,
+                intPreferencesKey("difficulty_decay_break_minutes") to 0,
+                stringPreferencesKey("enabled_task_types") to "REMOVED_TYPE",
+            )
+        }
+        val repository = DataStoreSettingsRepository(dataStore, scope)
+
+        val recovered = awaitSettings(repository, UserSettings())
+
+        assertEquals(UserSettings(), recovered)
     }
 
     private fun createRepository(): DataStoreSettingsRepository =

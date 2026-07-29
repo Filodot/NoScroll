@@ -88,12 +88,22 @@ abstract class LearningDao {
     abstract suspend fun getActivities(lessonId: String): List<LearningActivityEntity>
 
     @Query(
-        "SELECT * FROM lesson_packages WHERE course_id = :courseId AND status = 'VALIDATED' " +
-            "ORDER BY generated_at_epoch_millis, id LIMIT 1",
+        "SELECT lesson_packages.* FROM lesson_packages " +
+            "INNER JOIN learning_courses ON learning_courses.id = lesson_packages.course_id " +
+            "WHERE lesson_packages.course_id = :courseId " +
+            "AND lesson_packages.status = 'VALIDATED' " +
+            "AND lesson_packages.plan_version = learning_courses.plan_version " +
+            "ORDER BY lesson_packages.generated_at_epoch_millis, lesson_packages.id LIMIT 1",
     )
     abstract suspend fun getNextValidatedLesson(courseId: String): LessonPackageEntity?
 
-    @Query("SELECT COUNT(*) FROM lesson_packages WHERE course_id = :courseId AND status = 'VALIDATED'")
+    @Query(
+        "SELECT COUNT(*) FROM lesson_packages " +
+            "INNER JOIN learning_courses ON learning_courses.id = lesson_packages.course_id " +
+            "WHERE lesson_packages.course_id = :courseId " +
+            "AND lesson_packages.status = 'VALIDATED' " +
+            "AND lesson_packages.plan_version = learning_courses.plan_version",
+    )
     abstract fun observeValidatedLessonCount(courseId: String): Flow<Int>
 
     @Query("SELECT * FROM learning_attempts WHERE course_id = :courseId ORDER BY occurred_at_epoch_millis, id")
@@ -178,6 +188,29 @@ abstract class LearningDao {
     @Query("DELETE FROM learning_courses WHERE id = :courseId")
     protected abstract suspend fun deleteCourseRow(courseId: String)
 
+    @Query(
+        "UPDATE lesson_packages SET status = 'QUARANTINED' " +
+            "WHERE course_id = :courseId AND plan_version != :planVersion " +
+            "AND status = 'VALIDATED'",
+    )
+    protected abstract suspend fun quarantineLessonsFromOtherPlanVersions(
+        courseId: String,
+        planVersion: Int,
+    ): Int
+
+    @Query(
+        "UPDATE gate_cycles SET pending_task_id = NULL WHERE pending_task_id IN (" +
+            "SELECT id FROM pending_tasks WHERE task_type = 'LEARNING' " +
+            "AND learning_course_id = :courseId)",
+    )
+    protected abstract suspend fun clearPendingLearningTaskFromCycle(courseId: String): Int
+
+    @Query(
+        "DELETE FROM pending_tasks WHERE task_type = 'LEARNING' " +
+            "AND learning_course_id = :courseId",
+    )
+    protected abstract suspend fun deletePendingLearningTasks(courseId: String): Int
+
     @Transaction
     open suspend fun saveCourseContent(
         course: LearningCourseEntity,
@@ -186,6 +219,12 @@ abstract class LearningDao {
         nodes: List<CurriculumNodeEntity>,
         concepts: List<LearningConceptEntity>,
     ) {
+        val previousPlanVersion = getCourse(course.id)?.planVersion
+        if (previousPlanVersion != null && previousPlanVersion != course.planVersion) {
+            quarantineLessonsFromOtherPlanVersions(course.id, course.planVersion)
+            clearPendingLearningTaskFromCycle(course.id)
+            deletePendingLearningTasks(course.id)
+        }
         upsertCourse(course)
         deleteSourceChunks(course.id)
         deleteSources(course.id)

@@ -12,6 +12,8 @@ import com.filodot.noscroll.core.learning.model.LearningSourceChunk
 import com.filodot.noscroll.core.learning.model.LearningSourceType
 import com.filodot.noscroll.core.learning.model.LessonPackageStatus
 import com.filodot.noscroll.core.learning.model.SelfConfidence
+import com.filodot.noscroll.core.model.GateCycle
+import com.filodot.noscroll.core.model.TaskType
 import com.filodot.noscroll.data.local.repository.RoomLearningRepository
 import java.time.Instant
 import java.time.LocalDate
@@ -168,6 +170,48 @@ class LearningRoomRepositoryTest {
         repository.saveCourseContent(full)
 
         assertEquals(listOf(retained), repository.getMastery(full.course.id))
+    }
+
+    @Test
+    fun `new plan quarantines old lessons and removes its pending gate atomically`() = runBlocking {
+        val content = courseContent()
+        repository.saveCourseContent(content)
+        repository.saveLesson(StaticLearningCatalog.firstLesson)
+        val pending = com.filodot.noscroll.core.model.PendingTask(
+            id = "old-plan-task",
+            operation = com.filodot.noscroll.core.model.ArithmeticOperation.ADD,
+            leftOperand = 0,
+            rightOperand = 0,
+            expectedAnswer = 0,
+            createdAt = Instant.parse("2026-07-24T11:00:00Z"),
+            type = TaskType.LEARNING,
+            learningCourseId = content.course.id,
+            learningLessonId = StaticLearningCatalog.firstLesson.id,
+            learningActivityId = StaticLearningCatalog.firstLesson.activities.first().id,
+        )
+        database.pendingTaskDao().upsert(pending.toEntity())
+        database.gateCycleDao().upsert(
+            GateCycle(
+                localDate = LocalDate.of(2026, 7, 24),
+                pendingTaskId = pending.id,
+                updatedAt = pending.createdAt,
+            ).toEntity(),
+        )
+
+        repository.saveCourseContent(
+            content.copy(course = content.course.copy(planVersion = content.course.planVersion + 1)),
+        )
+
+        assertNull(repository.peekNextLesson(content.course.id))
+        assertEquals(0, repository.observeValidatedLessonCount(content.course.id).first())
+        assertEquals(
+            LessonPackageStatus.QUARANTINED,
+            repository.getLesson(StaticLearningCatalog.firstLesson.id)?.status,
+        )
+        assertNull(database.pendingTaskDao().get(pending.id))
+        assertNull(
+            database.gateCycleDao().get(GateCycle.CURRENT_GATE_CYCLE_ID)?.pendingTaskId,
+        )
     }
 
     private fun courseContent() = LearningCourseContent(

@@ -42,10 +42,17 @@ data class EmergencyUiState(
     val activeSinceLabel: String? = null,
 )
 
+enum class DashboardMonitoringState {
+    RUNNING,
+    STARTING,
+    RECOVERING,
+    DISCONNECTED,
+}
+
 data class DashboardUiState(
     val dateLabel: String,
     val accessibilityEnabled: Boolean = true,
-    val monitoringHealthy: Boolean = true,
+    val monitoringState: DashboardMonitoringState = DashboardMonitoringState.RUNNING,
     val shorts: ShortsLimitUiState = ShortsLimitUiState.Enabled(
         cycleUsedSeconds = 78,
         intervalSeconds = 300,
@@ -65,8 +72,11 @@ data class DashboardUiState(
     val protectionStatus: DashboardProtectionStatus
         get() = when {
             emergency.active -> DashboardProtectionStatus.EMERGENCY_BYPASS
-            !accessibilityEnabled || !monitoringHealthy ->
+            !accessibilityEnabled || monitoringState == DashboardMonitoringState.DISCONNECTED ->
                 DashboardProtectionStatus.ACCESSIBILITY_ERROR
+            monitoringState == DashboardMonitoringState.STARTING ||
+                monitoringState == DashboardMonitoringState.RECOVERING ->
+                DashboardProtectionStatus.MONITORING_RECOVERING
             else -> DashboardProtectionStatus.WORKING
         }
 
@@ -76,13 +86,14 @@ data class DashboardUiState(
             daily !is DailyLimitUiState.Disabled
 
     val hasUsageAccessProblem: Boolean
-        get() = accessibilityEnabled && monitoringHealthy &&
+        get() = accessibilityEnabled && monitoringState == DashboardMonitoringState.RUNNING &&
             daily is DailyLimitUiState.Unavailable
 }
 
 enum class DashboardProtectionStatus {
     WORKING,
     EMERGENCY_BYPASS,
+    MONITORING_RECOVERING,
     ACCESSIBILITY_ERROR,
 }
 
@@ -90,6 +101,7 @@ sealed interface DashboardAction {
     data object ShowHelp : DashboardAction
     data object OpenAccessibilitySettings : DashboardAction
     data object OpenUsageAccessSettings : DashboardAction
+    data object OpenDiagnostics : DashboardAction
     data object OpenChallenge : DashboardAction
     data object OpenInstagramChallenge : DashboardAction
     data class SetEmergencyEnabled(val enabled: Boolean) : DashboardAction

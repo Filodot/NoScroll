@@ -72,6 +72,25 @@ class DashboardScreenTest {
     }
 
     @Test
+    fun recoveringMonitoringDoesNotClaimProtectionIsFullyWorking() {
+        var lastAction: DashboardAction? = null
+        composeRule.setDashboard(
+            state = normalState().copy(
+                monitoringState = DashboardMonitoringState.RECOVERING,
+            ),
+            onAction = { lastAction = it },
+        )
+
+        composeRule.onNodeWithText("Защита восстанавливается").assertIsDisplayed()
+        composeRule.onNodeWithText("Восстанавливаем наблюдение").assertIsDisplayed()
+        composeRule.onNodeWithText("Открыть диагностику").performClick()
+
+        composeRule.runOnIdle {
+            check(lastAction == DashboardAction.OpenDiagnostics)
+        }
+    }
+
+    @Test
     fun unavailableDaily_keepsShortsWorkingAndOffersUsageAccess() {
         composeRule.setDashboard(normalState().copy(daily = DailyLimitUiState.Unavailable))
 

@@ -42,10 +42,24 @@ class DashboardModelsTest {
         val state = DashboardUiState(
             dateLabel = "14 июля",
             accessibilityEnabled = true,
-            monitoringHealthy = false,
+            monitoringState = DashboardMonitoringState.DISCONNECTED,
         )
 
         assertEquals(DashboardProtectionStatus.ACCESSIBILITY_ERROR, state.protectionStatus)
+    }
+
+    @Test
+    fun `recovering monitoring is visible without claiming that protection works`() {
+        val state = DashboardUiState(
+            dateLabel = "14 июля",
+            monitoringState = DashboardMonitoringState.RECOVERING,
+        )
+
+        assertEquals(
+            DashboardProtectionStatus.MONITORING_RECOVERING,
+            state.protectionStatus,
+        )
+        assertFalse(state.hasUsageAccessProblem)
     }
 
     @Test

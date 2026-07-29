@@ -40,13 +40,16 @@ import com.filodot.noscroll.core.model.DailyUsage
 import com.filodot.noscroll.core.model.PendingTask
 import com.filodot.noscroll.core.model.ShortsDetectionState
 import com.filodot.noscroll.core.model.CustomTaskPreset
-import com.filodot.noscroll.core.model.TaskDifficulty
 import com.filodot.noscroll.core.model.TaskTarget
 import com.filodot.noscroll.core.model.TaskType
 import com.filodot.noscroll.core.model.UserSettings
+import com.filodot.noscroll.core.tasks.TaskDifficultyConfig
+import com.filodot.noscroll.core.tasks.TaskDifficultyPolicy
+import com.filodot.noscroll.core.tasks.TaskDifficultyState
 import com.filodot.noscroll.core.learning.model.CourseStatus
 import com.filodot.noscroll.core.learning.model.LearningCourse
 import com.filodot.noscroll.feature.dashboard.DashboardAction
+import com.filodot.noscroll.feature.dashboard.DashboardMonitoringState
 import com.filodot.noscroll.feature.dashboard.DashboardScreen
 import com.filodot.noscroll.feature.dashboard.DashboardUiState
 import com.filodot.noscroll.feature.dashboard.DailyLimitUiState
@@ -357,6 +360,7 @@ fun NoScrollApp(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 refreshOnboardingPermissions(onboardingHolder, appGraph)
+                appGraph.monitoring?.requestHealthCheck()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -396,6 +400,9 @@ fun NoScrollApp(
                                     appGraph.systemAccess?.let { access ->
                                         context.openSystemSettings(access.usageAccessSettingsIntent())
                                     }
+
+                                DashboardAction.OpenDiagnostics ->
+                                    navController.navigate(AppRoute.Settings.path)
 
                                 DashboardAction.OpenChallenge -> scope.launch {
                                     appGraph.monitoring?.prepareChallengeForApp()
@@ -608,8 +615,9 @@ fun NoScrollApp(
 
                                 SettingsAction.RefreshSystemAccess -> {
                                     appGraph.systemAccess?.refresh()
+                                    appGraph.monitoring?.requestHealthCheck()
                                     scope.launch {
-                                        snackbarHostState.showSnackbar("Статусы обновлены")
+                                        snackbarHostState.showSnackbar("Запущена повторная проверка")
                                     }
                                 }
 
@@ -751,8 +759,16 @@ private fun buildDashboardState(
             DateTimeFormatter.ofPattern("d MMMM", Locale.forLanguageTag("ru")),
         ),
         accessibilityEnabled = access.accessibilityGranted,
-        monitoringHealthy = diagnostics.serviceConnected &&
-            diagnostics.healthStatus != MonitoringHealthStatus.DISCONNECTED,
+        monitoringState = when {
+            !diagnostics.serviceConnected -> DashboardMonitoringState.DISCONNECTED
+            diagnostics.healthStatus == MonitoringHealthStatus.STARTING ->
+                DashboardMonitoringState.STARTING
+            diagnostics.healthStatus == MonitoringHealthStatus.RECOVERING ->
+                DashboardMonitoringState.RECOVERING
+            diagnostics.healthStatus == MonitoringHealthStatus.RUNNING ->
+                DashboardMonitoringState.RUNNING
+            else -> DashboardMonitoringState.DISCONNECTED
+        },
         shorts = if (settings.shortsGateEnabled) {
             ShortsLimitUiState.Enabled(
                 cycleUsedSeconds = cycle.usedSeconds,
@@ -867,12 +883,24 @@ private fun buildTaskSettingsState(
     presets: List<CustomTaskPreset>,
     courses: List<LearningCourse>,
 ): TaskSettingsUiState {
-    val loadMinutes = (cycle.difficultyLoadSeconds / 60).toInt()
-    val difficulty = when {
-        loadMinutes >= settings.difficultyHardThresholdMinutes -> TaskDifficulty.HARD
-        loadMinutes >= settings.difficultyMediumThresholdMinutes -> TaskDifficulty.MEDIUM
-        else -> TaskDifficulty.EASY
-    }
+    val difficultyPolicy = TaskDifficultyPolicy()
+    val difficultyConfig = TaskDifficultyConfig(
+        mediumThresholdMinutes = settings.difficultyMediumThresholdMinutes,
+        hardThresholdMinutes = settings.difficultyHardThresholdMinutes,
+        decayBreakMinutesPerLoadMinute = settings.difficultyDecayBreakMinutes,
+    )
+    val effectiveLoad = difficultyPolicy.update(
+        state = TaskDifficultyState(
+            loadSeconds = cycle.difficultyLoadSeconds,
+            updatedAt = cycle.difficultyLoadUpdatedAt,
+            recoverySeconds = cycle.difficultyRecoverySeconds,
+        ),
+        now = Instant.now(),
+        shortsActive = false,
+        config = difficultyConfig,
+    )
+    val loadMinutes = (effectiveLoad.loadSeconds / 60).toInt()
+    val difficulty = difficultyPolicy.difficulty(effectiveLoad, difficultyConfig)
     return TaskSettingsUiState(
         loadMinutes = loadMinutes,
         currentDifficulty = difficulty,

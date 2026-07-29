@@ -190,6 +190,41 @@ class AccessibilityAdapterControllerTest {
     }
 
     @Test
+    fun `foreign content noise does not clear active target but foreign window does`() {
+        val scheduler = ManualAccessibilityScanScheduler()
+        val controller = controller(scheduler)
+        controller.onServiceConnected()
+        assertTrue(
+            controller.onAccessibilityEvent(
+                AccessibilityAdapterController.INSTAGRAM_PACKAGE_NAME,
+                AccessibilityAdapterController.TYPE_WINDOW_STATE_CHANGED,
+                1,
+            ),
+        )
+
+        assertFalse(
+            controller.onAccessibilityEvent(
+                "com.example.keyboard",
+                AccessibilityAdapterController.TYPE_WINDOW_CONTENT_CHANGED,
+                2,
+            ),
+        )
+        assertEquals(
+            AccessibilityAdapterController.INSTAGRAM_PACKAGE_NAME,
+            controller.state.value.foregroundPackage,
+        )
+
+        assertFalse(
+            controller.onAccessibilityEvent(
+                "com.example.other",
+                AccessibilityAdapterController.TYPE_WINDOW_STATE_CHANGED,
+                3,
+            ),
+        )
+        assertNull(controller.state.value.foregroundPackage)
+    }
+
+    @Test
     fun `interrupt drops pending scan and reconnect starts cleanly`() = runTest {
         val scheduler = ManualAccessibilityScanScheduler()
         val controller = controller(scheduler)

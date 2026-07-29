@@ -107,6 +107,20 @@ class InMemoryLearningRepository(
     override val courses: Flow<List<LearningCourse>> = mutableCourses
 
     override suspend fun saveCourseContent(content: LearningCourseContent) {
+        val previousPlanVersion = contentById[content.course.id]?.course?.planVersion
+        if (previousPlanVersion != null && previousPlanVersion != content.course.planVersion) {
+            lessonsById.replaceAll { _, lesson ->
+                if (lesson.courseId == content.course.id &&
+                    lesson.planVersion != content.course.planVersion &&
+                    lesson.status == LessonPackageStatus.VALIDATED
+                ) {
+                    lesson.copy(status = LessonPackageStatus.QUARANTINED)
+                } else {
+                    lesson
+                }
+            }
+            publishLessons()
+        }
         contentById[content.course.id] = content
         mutableCourses.value = contentById.values
             .map(LearningCourseContent::course)
@@ -137,7 +151,9 @@ class InMemoryLearningRepository(
     override fun observeValidatedLessonCount(courseId: String): Flow<Int> =
         mutableLessons.map { lessons ->
             lessons.count {
-                it.courseId == courseId && it.status == LessonPackageStatus.VALIDATED
+                it.courseId == courseId &&
+                    it.status == LessonPackageStatus.VALIDATED &&
+                    it.planVersion == contentById[courseId]?.course?.planVersion
             }
         }
 
@@ -171,7 +187,11 @@ class InMemoryLearningRepository(
 
     private fun validatedLessons(courseId: String): List<LessonPackage> =
         lessonsById.values
-            .filter { it.courseId == courseId && it.status == LessonPackageStatus.VALIDATED }
+            .filter {
+                it.courseId == courseId &&
+                    it.status == LessonPackageStatus.VALIDATED &&
+                    it.planVersion == contentById[courseId]?.course?.planVersion
+            }
             .sortedWith(compareBy(LessonPackage::generatedAt, LessonPackage::id))
 
     private fun publishLessons() {

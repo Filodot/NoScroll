@@ -113,6 +113,7 @@ data class LearningUiState(
     val textAnswer: String = "",
     val booleanAnswer: Boolean? = null,
     val answerStatus: LearningAnswerStatus = LearningAnswerStatus.UNCHECKED,
+    val completedActivityIds: Set<String> = emptySet(),
     val replacedActivityIds: Set<String> = emptySet(),
     val message: String? = null,
 ) {
@@ -326,6 +327,8 @@ class LearningStateHolder(
                     selectedCourse = null,
                     lesson = null,
                     showingLessonMaterial = false,
+                    completedActivityIds = emptySet(),
+                    replacedActivityIds = emptySet(),
                     planDirty = false,
                     lastPlanProviderLabel = null,
                     deleteCourseConfirmation = false,
@@ -339,6 +342,8 @@ class LearningStateHolder(
                     pane = LearningPane.COURSE,
                     lesson = null,
                     showingLessonMaterial = false,
+                    completedActivityIds = emptySet(),
+                    replacedActivityIds = emptySet(),
                     message = null,
                 )
             }
@@ -732,6 +737,8 @@ class LearningStateHolder(
                     pane = LearningPane.COURSES,
                     selectedCourse = null,
                     lesson = null,
+                    completedActivityIds = emptySet(),
+                    replacedActivityIds = emptySet(),
                     readyLessons = 0,
                     selectedCourseMasteryPercent = 0,
                     planDirty = false,
@@ -845,6 +852,8 @@ class LearningStateHolder(
                 readyLessons = repository.observeValidatedLessonCount(courseId).first(),
                 lesson = null,
                 showingLessonMaterial = false,
+                completedActivityIds = emptySet(),
+                replacedActivityIds = emptySet(),
                 message = null,
             )
         }
@@ -852,24 +861,57 @@ class LearningStateHolder(
 
     private suspend fun startLesson() {
         val courseId = mutableState.value.selectedCourse?.course?.id ?: return
-        val lesson = repository.peekNextLesson(courseId)
-        if (lesson == null) {
+        val attempts = repository.getAttempts(courseId)
+        repeat(MAX_COMPLETED_LESSONS_SKIPPED_ON_RESUME) {
+            val lesson = repository.peekNextLesson(courseId)
+            if (lesson == null) {
+                mutableState.update {
+                    it.copy(
+                        readyLessons = 0,
+                        message = "Нет готового офлайн-урока. Подготовьте следующий урок.",
+                    )
+                }
+                return
+            }
+            val lessonAttempts = attempts.filter { it.lessonId == lesson.id }
+            val completedIds = lessonAttempts
+                .filter {
+                    it.result == AttemptResult.CORRECT ||
+                        it.result == AttemptResult.REPLACED_AS_SUSPICIOUS
+                }
+                .mapTo(mutableSetOf()) { it.activityId }
+            val replacedIds = lessonAttempts
+                .filter { it.result == AttemptResult.REPLACED_AS_SUSPICIOUS }
+                .mapTo(mutableSetOf()) { it.activityId }
+            val firstIncompleteIndex = lesson.activities.indexOfFirst { it.id !in completedIds }
+            if (firstIncompleteIndex < 0) {
+                repository.takeNextLesson(courseId)
+                return@repeat
+            }
             mutableState.update {
-                it.copy(message = "Нет готового офлайн-урока. Позже здесь запустится генерация.")
+                initialActivityState(
+                    state = it.copy(
+                        pane = LearningPane.LESSON,
+                        lesson = lesson,
+                        showingLessonMaterial = true,
+                        activityIndex = firstIncompleteIndex,
+                        completedActivityIds = completedIds,
+                        replacedActivityIds = replacedIds,
+                        message = if (completedIds.isEmpty()) {
+                            null
+                        } else {
+                            "Продолжаем урок с сохранённого места"
+                        },
+                    ),
+                    activity = lesson.activities[firstIncompleteIndex],
+                )
             }
             return
         }
         mutableState.update {
-            initialActivityState(
-                state = it.copy(
-                    pane = LearningPane.LESSON,
-                    lesson = lesson,
-                    showingLessonMaterial = true,
-                    activityIndex = 0,
-                    replacedActivityIds = emptySet(),
-                    message = null,
-                ),
-                activity = lesson.activities.firstOrNull(),
+            it.copy(
+                readyLessons = repository.observeValidatedLessonCount(courseId).first(),
+                message = "Завершённые уроки убраны из очереди. Подготовьте следующий урок.",
             )
         }
     }
@@ -1039,12 +1081,20 @@ class LearningStateHolder(
         val state = mutableState.value
         if (state.answerStatus != LearningAnswerStatus.CORRECT) return
         val lesson = state.lesson ?: return
+        val completedIds = state.completedActivityIds + (state.currentActivity?.id ?: return)
         val nextIndex = (state.activityIndex + 1 until lesson.activities.size)
-            .firstOrNull { lesson.activities[it].id !in state.replacedActivityIds }
+            .firstOrNull {
+                lesson.activities[it].id !in completedIds &&
+                    lesson.activities[it].id !in state.replacedActivityIds
+            }
         if (nextIndex != null) {
             mutableState.update {
                 initialActivityState(
-                    it.copy(activityIndex = nextIndex, message = null),
+                    it.copy(
+                        activityIndex = nextIndex,
+                        completedActivityIds = completedIds,
+                        message = null,
+                    ),
                     lesson.activities[nextIndex],
                 )
             }
@@ -1062,6 +1112,8 @@ class LearningStateHolder(
                 readyLessons = repository.observeValidatedLessonCount(courseId).first(),
                 lesson = null,
                 showingLessonMaterial = false,
+                completedActivityIds = emptySet(),
+                replacedActivityIds = emptySet(),
                 message = null,
             )
         }
@@ -1073,14 +1125,22 @@ class LearningStateHolder(
         recordAttempt(activity, AttemptResult.REPLACED_AS_SUSPICIOUS)
         val lesson = state.lesson ?: return
         val replaced = state.replacedActivityIds + activity.id
+        val completed = state.completedActivityIds + activity.id
         val replacementIndex = lesson.activities.indices.firstOrNull {
-            lesson.activities[it].id !in replaced
+            lesson.activities[it].id !in completed && lesson.activities[it].id !in replaced
         }
         if (replacementIndex == null) {
+            val courseId = state.selectedCourse?.course?.id ?: return
+            repository.takeNextLesson(courseId)
             mutableState.update {
                 it.copy(
+                    pane = LearningPane.COMPLETED,
+                    lesson = null,
+                    showingLessonMaterial = false,
+                    completedActivityIds = emptySet(),
                     replacedActivityIds = replaced,
-                    message = "Резервные задания закончились. Урок не списан и прогресс не изменён.",
+                    readyLessons = repository.observeValidatedLessonCount(courseId).first(),
+                    message = "Подозрительные задания убраны. Прогресс не изменён.",
                 )
             }
             return
@@ -1089,6 +1149,7 @@ class LearningStateHolder(
             initialActivityState(
                 it.copy(
                     activityIndex = replacementIndex,
+                    completedActivityIds = completed,
                     replacedActivityIds = replaced,
                     message = "Подозрительное задание заменено без штрафа",
                 ),
@@ -1170,6 +1231,7 @@ private const val MAX_MODEL_ID_LENGTH = 120
 private const val MAX_PLAN_TITLE_LENGTH = 100
 private const val MAX_PLAN_DESCRIPTION_LENGTH = 500
 private const val PLAN_SAVE_DEBOUNCE_MILLIS = 500L
+private const val MAX_COMPLETED_LESSONS_SKIPPED_ON_RESUME = 25
 
 internal fun AiProviderId.displayName(): String = when (this) {
     AiProviderId.GEMINI -> "Google Gemini"

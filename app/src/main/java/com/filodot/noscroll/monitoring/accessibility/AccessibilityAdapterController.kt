@@ -56,8 +56,14 @@ internal class AccessibilityAdapterController(
         if (eventType !in SUPPORTED_EVENT_TYPES) return false
         val targetPackage = packageName?.toString()?.takeIf(TARGET_PACKAGE_NAMES::contains)
         if (targetPackage == null) {
-            coalescer.cancelAndReset()
-            updateDeviceState(foregroundPackage = null)
+            // Content events from keyboards, notifications and other accessibility services do
+            // not mean that the foreground target was left. Only a window-level transition is a
+            // reliable boundary; treating every foreign content event as an exit caused silent
+            // undercounting while YouTube or Instagram was still visible.
+            if (eventType in FOREGROUND_BOUNDARY_EVENT_TYPES) {
+                coalescer.cancelAndReset()
+                updateDeviceState(foregroundPackage = null)
+            }
             return false
         }
         if (mutableState.value.foregroundPackage != targetPackage) {
@@ -148,6 +154,10 @@ internal class AccessibilityAdapterController(
             TYPE_WINDOWS_CHANGED,
             TYPE_WINDOW_CONTENT_CHANGED,
             TYPE_VIEW_SCROLLED,
+        )
+        private val FOREGROUND_BOUNDARY_EVENT_TYPES = setOf(
+            TYPE_WINDOW_STATE_CHANGED,
+            TYPE_WINDOWS_CHANGED,
         )
 
         private val DISCONNECTED_STATE = DeviceState(

@@ -139,6 +139,8 @@ class MonitoringCoordinator(
     private var emergencyOverrideActive = false
     private var activeService: NoScrollAccessibilityService? = null
     private var shortsEjectionBlockedUntilElapsedMillis = 0L
+    @Volatile
+    private var lastHealthyHeartbeatElapsedMillis: Long? = null
     private val heartbeatWake = Channel<Unit>(Channel.CONFLATED)
     private val failureLock = Any()
     private var activeFailureCodes: Set<String> = emptySet()
@@ -151,6 +153,7 @@ class MonitoringCoordinator(
         sessionJob?.cancel()
         activeService = service
         lastTickElapsedMillis = null
+        lastHealthyHeartbeatElapsedMillis = SystemClock.elapsedRealtime()
         while (heartbeatWake.tryReceive().isSuccess) Unit
         synchronized(failureLock) { activeFailureCodes = emptySet() }
         mutableDiagnostics.update {
@@ -228,6 +231,21 @@ class MonitoringCoordinator(
                         delay(RECONCILIATION_MILLIS)
                     }
                 }
+                launch {
+                    while (isActive) {
+                        delay(HEALTH_WATCHDOG_INTERVAL_MILLIS)
+                        val elapsed = SystemClock.elapsedRealtime()
+                        val lastHealthy = lastHealthyHeartbeatElapsedMillis
+                        if (lastHealthy == null ||
+                            elapsed >= lastHealthy &&
+                            elapsed - lastHealthy > HEARTBEAT_STALE_AFTER_MILLIS
+                        ) {
+                            recordRuntimeFailure(FAILURE_HEARTBEAT_STALE)
+                        } else {
+                            recordRuntimeRecovery(FAILURE_HEARTBEAT_STALE)
+                        }
+                    }
+                }
             }
         }
     }
@@ -239,6 +257,7 @@ class MonitoringCoordinator(
         latestDeviceState = DeviceState(false, false, null)
         latestDetectionState = ShortsDetectionState.UNKNOWN
         lastTickElapsedMillis = null
+        lastHealthyHeartbeatElapsedMillis = null
         entryGate.reset()
         deferredIntervalGate.reset()
         activeService = null
@@ -259,6 +278,17 @@ class MonitoringCoordinator(
         deferredIntervalGate.reset()
         heartbeatWake.trySend(Unit)
         recordRuntimeFailure(FAILURE_TRANSIENT_INTERRUPT)
+    }
+
+    /** Wakes a healthy session and recreates it if Android left the bound service without a job. */
+    fun requestHealthCheck() {
+        systemAccess.refresh()
+        val service = activeService
+        if (service != null && sessionJob?.isActive != true) {
+            attach(service)
+        } else {
+            heartbeatWake.trySend(Unit)
+        }
     }
 
     suspend fun verifyAnswer(taskId: String, answer: String): Boolean = mutex.withLock {
@@ -418,7 +448,7 @@ class MonitoringCoordinator(
                 return@withLock
             }
             val existing = taskRepository.pendingTask.value
-            if (existing != null) {
+            if (existing?.target == target) {
                 mutableEnforcement.value = existing.toUi(grantMinutesFor(existing.target))
                 return@withLock
             }
@@ -664,13 +694,11 @@ class MonitoringCoordinator(
             effectiveSettings.shortsIntervalMinutes > 0 &&
             cycle.usedSeconds >= effectiveSettings.shortsIntervalMinutes.toLong() *
             SECONDS_PER_MINUTE
-        if (
-            youtubeForeground &&
-            taskRepository.pendingTask.value?.target == TaskTarget.INSTAGRAM
-        ) {
-            deferredIntervalGate.reset()
-            return
-        }
+        val pendingTask = taskRepository.pendingTask.value
+        val youtubeCycle = cycle.forPolicyTarget(
+            pendingTask = pendingTask,
+            target = TaskTarget.YOUTUBE_SHORTS,
+        )
         val decision = policyEngine.decide(
             PolicyInput(
                 settings = effectiveSettings,
@@ -679,8 +707,8 @@ class MonitoringCoordinator(
                     usageAccessGranted = access.usageAccessGranted,
                 ),
                 dailyUsage = usage,
-                gateCycle = cycle,
-                pendingTask = taskRepository.pendingTask.value
+                gateCycle = youtubeCycle,
+                pendingTask = pendingTask
                     ?.takeIf { it.target == TaskTarget.YOUTUBE_SHORTS },
                 emergencyState = emergencyRepository.state.value,
                 detectorState = latestDetectionState,
@@ -750,11 +778,9 @@ class MonitoringCoordinator(
         }
         val now = wallClock.now()
         val existing = taskRepository.pendingTask.value
-        if (existing != null) {
-            if (existing.target == TaskTarget.INSTAGRAM) {
-                showEnforcement(existing.toUi(grantMinutesFor(TaskTarget.INSTAGRAM)))
-                requestTargetEjection()
-            }
+        if (existing?.target == TaskTarget.INSTAGRAM) {
+            showEnforcement(existing.toUi(grantMinutesFor(TaskTarget.INSTAGRAM)))
+            requestTargetEjection()
             return
         }
         val intervalSeconds = settings.instagramIntervalMinutes
@@ -817,7 +843,7 @@ class MonitoringCoordinator(
     ): EnforcementUiState.TaskGate {
         val existing = taskRepository.pendingTask.value
         val activeTaskGate = mutableEnforcement.value as? EnforcementUiState.TaskGate
-        if (existing == null && activeTaskGate != null) return activeTaskGate
+        if (existing == null && activeTaskGate?.target == target) return activeTaskGate
         val now = wallClock.now()
         val effectiveDifficultyState = taskDifficultyPolicy.update(
             state = cycle.toDifficultyState(),
@@ -830,20 +856,29 @@ class MonitoringCoordinator(
             state = effectiveDifficultyState,
             config = difficultyConfig(),
         )
-        val task = existing ?: newTask(difficulty, requestedTrigger, target).also { created ->
-            taskRepository.save(created)
-            usageRepository.saveGateCycle(
-                cycleForTask.copy(
-                    pendingTaskId = created.id,
-                    updatedAt = now,
-                ),
-            )
-            usageRepository.saveDailyUsage(
-                usage.copy(
-                    gatesShown = usage.gatesShown.saturatingIncrement(),
-                    updatedAt = now,
-                ),
-            )
+        val task = when {
+            existing == null -> newTask(difficulty, requestedTrigger, target).also { created ->
+                taskRepository.save(created)
+                usageRepository.saveGateCycle(
+                    cycleForTask.copy(
+                        pendingTaskId = created.id,
+                        updatedAt = now,
+                    ),
+                )
+                usageRepository.saveDailyUsage(
+                    usage.copy(
+                        gatesShown = usage.gatesShown.saturatingIncrement(),
+                        updatedAt = now,
+                    ),
+                )
+            }
+
+            existing.target != target -> existing.retargetFor(target, requestedTrigger)
+                .also { retargeted ->
+                    taskRepository.save(retargeted)
+                }
+
+            else -> existing
         }
         if (cycleForTask.pendingTaskId != task.id) {
             usageRepository.saveGateCycle(
@@ -1054,7 +1089,9 @@ class MonitoringCoordinator(
     }
 
     private fun markHeartbeatHealthy() {
+        lastHealthyHeartbeatElapsedMillis = SystemClock.elapsedRealtime()
         recordRuntimeRecovery(FAILURE_TRANSIENT_INTERRUPT)
+        recordRuntimeRecovery(FAILURE_HEARTBEAT_STALE)
         val health = synchronized(failureLock) {
             if (activeFailureCodes.isEmpty()) {
                 MonitoringHealthStatus.RUNNING
@@ -1072,12 +1109,20 @@ class MonitoringCoordinator(
     }
 
     private fun recordRuntimeFailure(code: String, error: Exception? = null) {
-        synchronized(failureLock) { activeFailureCodes = activeFailureCodes + code }
+        val newlyActive = synchronized(failureLock) {
+            val added = code !in activeFailureCodes
+            activeFailureCodes = activeFailureCodes + code
+            added
+        }
         if (error != null) Log.w(LOG_TAG, code, error)
         mutableDiagnostics.update {
             it.copy(
                 healthStatus = MonitoringHealthStatus.RECOVERING,
-                recoveryCount = it.recoveryCount.saturatingIncrement(),
+                recoveryCount = if (newlyActive) {
+                    it.recoveryCount.saturatingIncrement()
+                } else {
+                    it.recoveryCount
+                },
                 lastFailureCode = code,
             )
         }
@@ -1111,6 +1156,8 @@ class MonitoringCoordinator(
         private const val ACTIVE_HEARTBEAT_MILLIS = 1_000L
         private const val IDLE_HEARTBEAT_MILLIS = 15_000L
         private const val RECONCILIATION_MILLIS = 60_000L
+        private const val HEALTH_WATCHDOG_INTERVAL_MILLIS = 15_000L
+        private const val HEARTBEAT_STALE_AFTER_MILLIS = 45_000L
         private const val MILLIS_PER_SECOND = 1_000L
         private const val SECONDS_PER_MINUTE = 60L
         private const val WRONG_ATTEMPTS_FOR_REPLACEMENT = 3
@@ -1119,7 +1166,22 @@ class MonitoringCoordinator(
         private const val FAILURE_DEVICE_STATE_STREAM = "DEVICE_STATE_STREAM"
         private const val FAILURE_EVENT_STREAM = "EVENT_STREAM"
         private const val FAILURE_HEARTBEAT = "HEARTBEAT"
+        private const val FAILURE_HEARTBEAT_STALE = "HEARTBEAT_STALE"
         private const val FAILURE_RECONCILIATION = "RECONCILIATION"
         private const val FAILURE_TRANSIENT_INTERRUPT = "TRANSIENT_INTERRUPT"
     }
 }
+
+internal fun GateCycle.forPolicyTarget(
+    pendingTask: PendingTask?,
+    target: TaskTarget,
+): GateCycle = if (pendingTask != null && pendingTask.target != target) {
+    copy(pendingTaskId = null)
+} else {
+    this
+}
+
+internal fun PendingTask.retargetFor(
+    target: TaskTarget,
+    trigger: TaskTrigger,
+): PendingTask = if (this.target == target) this else copy(target = target, trigger = trigger)

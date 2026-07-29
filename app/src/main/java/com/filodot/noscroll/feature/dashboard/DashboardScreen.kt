@@ -186,16 +186,21 @@ private fun ProtectionStatusChip(status: DashboardProtectionStatus) {
     val label = when (status) {
         DashboardProtectionStatus.WORKING -> "Защита работает"
         DashboardProtectionStatus.EMERGENCY_BYPASS -> "Ограничения отключены"
+        DashboardProtectionStatus.MONITORING_RECOVERING -> "Защита восстанавливается"
         DashboardProtectionStatus.ACCESSIBILITY_ERROR -> "Защита не работает"
     }
     val containerColor = when (status) {
         DashboardProtectionStatus.WORKING -> MaterialTheme.colorScheme.primaryContainer
         DashboardProtectionStatus.EMERGENCY_BYPASS -> MaterialTheme.colorScheme.tertiaryContainer
+        DashboardProtectionStatus.MONITORING_RECOVERING ->
+            MaterialTheme.colorScheme.secondaryContainer
         DashboardProtectionStatus.ACCESSIBILITY_ERROR -> MaterialTheme.colorScheme.errorContainer
     }
     val contentColor = when (status) {
         DashboardProtectionStatus.WORKING -> MaterialTheme.colorScheme.onPrimaryContainer
         DashboardProtectionStatus.EMERGENCY_BYPASS -> MaterialTheme.colorScheme.onTertiaryContainer
+        DashboardProtectionStatus.MONITORING_RECOVERING ->
+            MaterialTheme.colorScheme.onSecondaryContainer
         DashboardProtectionStatus.ACCESSIBILITY_ERROR -> MaterialTheme.colorScheme.onErrorContainer
     }
     Surface(
@@ -248,7 +253,25 @@ private fun PriorityStateBanner(
             )
         }
 
-        !state.monitoringHealthy -> {
+        state.monitoringState == DashboardMonitoringState.STARTING ||
+            state.monitoringState == DashboardMonitoringState.RECOVERING -> {
+            Spacer(Modifier.height(16.dp))
+            PriorityBanner(
+                kind = BannerKind.WARNING,
+                iconLabel = "Восстановление",
+                iconText = "↻",
+                title = if (state.monitoringState == DashboardMonitoringState.STARTING) {
+                    "Запускаем защиту"
+                } else {
+                    "Восстанавливаем наблюдение"
+                },
+                body = "Служба выполняет самопроверку. Если статус не изменится, откройте диагностику.",
+                actionLabel = "Открыть диагностику",
+                onAction = { onAction(DashboardAction.OpenDiagnostics) },
+            )
+        }
+
+        state.monitoringState == DashboardMonitoringState.DISCONNECTED -> {
             Spacer(Modifier.height(16.dp))
             PriorityBanner(
                 kind = BannerKind.ERROR,
