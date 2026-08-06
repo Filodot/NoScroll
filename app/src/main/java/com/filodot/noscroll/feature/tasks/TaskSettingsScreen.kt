@@ -47,7 +47,7 @@ data class TaskSettingsUiState(
     val decayBreakMinutes: Int,
     val enabledTypes: Set<TaskType>,
     val presets: List<CustomTaskPreset>,
-    val instagramEnabled: Boolean,
+    val enabledTargets: Set<TaskTarget>,
     val learningCourses: List<LearningCourseChoiceUi> = emptyList(),
     val selectedLearningCourseIds: Set<String> = emptySet(),
 )
@@ -97,7 +97,7 @@ fun TaskSettingsScreen(
             style = MaterialTheme.typography.bodyLarge,
         )
         LoadCard(state)
-        PrepareAccessCard(state.instagramEnabled, onAction)
+        PrepareAccessCard(state.enabledTargets, onAction)
         DifficultyCard(state, onAction)
         TaskTypesCard(state, onAction)
         LearningCoursesCard(state, onAction)
@@ -134,7 +134,7 @@ private fun LoadCard(state: TaskSettingsUiState) {
 
 @Composable
 private fun PrepareAccessCard(
-    instagramEnabled: Boolean,
+    enabledTargets: Set<TaskTarget>,
     onAction: (TaskSettingsAction) -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
@@ -143,13 +143,29 @@ private fun PrepareAccessCard(
             Text("Решите входное задание до открытия отвлекающего приложения.")
             Button(
                 onClick = { onAction(TaskSettingsAction.PrepareAccess(TaskTarget.YOUTUBE_SHORTS)) },
+                enabled = TaskTarget.YOUTUBE_SHORTS in enabledTargets,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             ) { Text("Разрешить YouTube Shorts") }
             OutlinedButton(
                 onClick = { onAction(TaskSettingsAction.PrepareAccess(TaskTarget.INSTAGRAM)) },
-                enabled = instagramEnabled,
+                enabled = TaskTarget.INSTAGRAM in enabledTargets,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             ) { Text("Разрешить Instagram") }
+            OutlinedButton(
+                onClick = { onAction(TaskSettingsAction.PrepareAccess(TaskTarget.YOUTUBE)) },
+                enabled = TaskTarget.YOUTUBE in enabledTargets,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) { Text("Разрешить весь YouTube") }
+            OutlinedButton(
+                onClick = { onAction(TaskSettingsAction.PrepareAccess(TaskTarget.PINTEREST)) },
+                enabled = TaskTarget.PINTEREST in enabledTargets,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) { Text("Разрешить Pinterest") }
+            OutlinedButton(
+                onClick = { onAction(TaskSettingsAction.PrepareAccess(TaskTarget.CHROME)) },
+                enabled = TaskTarget.CHROME in enabledTargets,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) { Text("Разрешить Chrome") }
         }
     }
 }

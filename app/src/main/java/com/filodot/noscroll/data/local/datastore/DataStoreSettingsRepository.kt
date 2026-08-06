@@ -67,6 +67,12 @@ class DataStoreSettingsRepository(
                 preferences[Keys.DAILY_LIMIT_MINUTES] = settings.dailyLimitMinutes
                 preferences[Keys.INSTAGRAM_GATE_ENABLED] = settings.instagramGateEnabled
                 preferences[Keys.INSTAGRAM_INTERVAL_MINUTES] = settings.instagramIntervalMinutes
+                preferences[Keys.YOUTUBE_GATE_ENABLED] = settings.youtubeGateEnabled
+                preferences[Keys.YOUTUBE_INTERVAL_MINUTES] = settings.youtubeIntervalMinutes
+                preferences[Keys.PINTEREST_GATE_ENABLED] = settings.pinterestGateEnabled
+                preferences[Keys.PINTEREST_INTERVAL_MINUTES] = settings.pinterestIntervalMinutes
+                preferences[Keys.CHROME_GATE_ENABLED] = settings.chromeGateEnabled
+                preferences[Keys.CHROME_INTERVAL_MINUTES] = settings.chromeIntervalMinutes
                 preferences[Keys.DIFFICULTY_MEDIUM_THRESHOLD_MINUTES] =
                     settings.difficultyMediumThresholdMinutes
                 preferences[Keys.DIFFICULTY_HARD_THRESHOLD_MINUTES] =
@@ -124,6 +130,12 @@ private object Keys {
     val DAILY_LIMIT_MINUTES = intPreferencesKey("daily_limit_minutes")
     val INSTAGRAM_GATE_ENABLED = booleanPreferencesKey("instagram_gate_enabled")
     val INSTAGRAM_INTERVAL_MINUTES = intPreferencesKey("instagram_interval_minutes")
+    val YOUTUBE_GATE_ENABLED = booleanPreferencesKey("youtube_gate_enabled")
+    val YOUTUBE_INTERVAL_MINUTES = intPreferencesKey("youtube_interval_minutes")
+    val PINTEREST_GATE_ENABLED = booleanPreferencesKey("pinterest_gate_enabled")
+    val PINTEREST_INTERVAL_MINUTES = intPreferencesKey("pinterest_interval_minutes")
+    val CHROME_GATE_ENABLED = booleanPreferencesKey("chrome_gate_enabled")
+    val CHROME_INTERVAL_MINUTES = intPreferencesKey("chrome_interval_minutes")
     val DIFFICULTY_MEDIUM_THRESHOLD_MINUTES =
         intPreferencesKey("difficulty_medium_threshold_minutes")
     val DIFFICULTY_HARD_THRESHOLD_MINUTES =
@@ -156,6 +168,15 @@ private fun preferencesToSettings(preferences: Preferences): UserSettings {
     val instagramInterval = preferences[Keys.INSTAGRAM_INTERVAL_MINUTES]
         ?.takeIf { it in 1..30 }
         ?: defaults.instagramIntervalMinutes
+    val youtubeInterval = preferences[Keys.YOUTUBE_INTERVAL_MINUTES]
+        ?.takeIf { it in 1..30 }
+        ?: defaults.youtubeIntervalMinutes
+    val pinterestInterval = preferences[Keys.PINTEREST_INTERVAL_MINUTES]
+        ?.takeIf { it in 1..30 }
+        ?: defaults.pinterestIntervalMinutes
+    val chromeInterval = preferences[Keys.CHROME_INTERVAL_MINUTES]
+        ?.takeIf { it in 1..30 }
+        ?: defaults.chromeIntervalMinutes
     val mediumThreshold = preferences[Keys.DIFFICULTY_MEDIUM_THRESHOLD_MINUTES]
         ?.takeIf { it in 1..120 }
         ?: defaults.difficultyMediumThresholdMinutes
@@ -179,6 +200,15 @@ private fun preferencesToSettings(preferences: Preferences): UserSettings {
         instagramGateEnabled = preferences[Keys.INSTAGRAM_GATE_ENABLED]
             ?: defaults.instagramGateEnabled,
         instagramIntervalMinutes = instagramInterval,
+        youtubeGateEnabled = preferences[Keys.YOUTUBE_GATE_ENABLED]
+            ?: defaults.youtubeGateEnabled,
+        youtubeIntervalMinutes = youtubeInterval,
+        pinterestGateEnabled = preferences[Keys.PINTEREST_GATE_ENABLED]
+            ?: defaults.pinterestGateEnabled,
+        pinterestIntervalMinutes = pinterestInterval,
+        chromeGateEnabled = preferences[Keys.CHROME_GATE_ENABLED]
+            ?: defaults.chromeGateEnabled,
+        chromeIntervalMinutes = chromeInterval,
         difficultyMediumThresholdMinutes = mediumThreshold,
         difficultyHardThresholdMinutes = hardThreshold,
         difficultyDecayBreakMinutes = preferences[Keys.DIFFICULTY_DECAY_BREAK_MINUTES]
@@ -223,6 +253,7 @@ private fun preferencesToSettings(preferences: Preferences): UserSettings {
             ?: defaults.detectorRulesVersion,
         settingsSchemaVersion = preferences[Keys.SETTINGS_SCHEMA_VERSION]
             ?.takeIf { it > 0 }
+            ?.coerceAtLeast(defaults.settingsSchemaVersion)
             ?: defaults.settingsSchemaVersion,
     )
 }

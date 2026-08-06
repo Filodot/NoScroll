@@ -1,5 +1,6 @@
 package com.filodot.noscroll.feature.dashboard
 
+import com.filodot.noscroll.core.model.TaskTarget
 import kotlin.math.max
 
 sealed interface ShortsLimitUiState {
@@ -25,16 +26,16 @@ sealed interface DailyLimitUiState {
     data object Unavailable : DailyLimitUiState
 }
 
-sealed interface InstagramLimitUiState {
+sealed interface AppLimitUiState {
     data class Enabled(
         val cycleUsedSeconds: Long,
         val intervalSeconds: Long,
         val todaySeconds: Long,
         val accessLocked: Boolean = false,
         val unlockedUntilLabel: String? = null,
-    ) : InstagramLimitUiState
+    ) : AppLimitUiState
 
-    data object Disabled : InstagramLimitUiState
+    data object Disabled : AppLimitUiState
 }
 
 data class EmergencyUiState(
@@ -77,11 +78,14 @@ data class DashboardUiState(
         usedSeconds = 18 * 60,
         limitSeconds = 45 * 60,
     ),
-    val instagram: InstagramLimitUiState = InstagramLimitUiState.Enabled(
+    val youtube: AppLimitUiState = AppLimitUiState.Disabled,
+    val instagram: AppLimitUiState = AppLimitUiState.Enabled(
         cycleUsedSeconds = 0,
         intervalSeconds = 600,
         todaySeconds = 0,
     ),
+    val pinterest: AppLimitUiState = AppLimitUiState.Disabled,
+    val chrome: AppLimitUiState = AppLimitUiState.Disabled,
     val emergency: EmergencyUiState = EmergencyUiState(),
     val focusMode: FocusModeUiState = FocusModeUiState(),
 ) {
@@ -98,7 +102,10 @@ data class DashboardUiState(
 
     val emergencyAvailable: Boolean
         get() = shorts !is ShortsLimitUiState.Disabled ||
-            instagram !is InstagramLimitUiState.Disabled ||
+            youtube !is AppLimitUiState.Disabled ||
+            instagram !is AppLimitUiState.Disabled ||
+            pinterest !is AppLimitUiState.Disabled ||
+            chrome !is AppLimitUiState.Disabled ||
             daily !is DailyLimitUiState.Disabled ||
             focusMode.active
 
@@ -120,7 +127,7 @@ sealed interface DashboardAction {
     data object OpenUsageAccessSettings : DashboardAction
     data object OpenDiagnostics : DashboardAction
     data object OpenChallenge : DashboardAction
-    data object OpenInstagramChallenge : DashboardAction
+    data class OpenAppChallenge(val target: TaskTarget) : DashboardAction
     data class StartFocusMode(
         val durationMinutes: Int,
         val packageNames: Set<String>,

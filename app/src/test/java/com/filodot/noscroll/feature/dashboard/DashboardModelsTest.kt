@@ -79,7 +79,7 @@ class DashboardModelsTest {
         val allOff = DashboardUiState(
             dateLabel = "14 июля",
             shorts = ShortsLimitUiState.Disabled,
-            instagram = InstagramLimitUiState.Disabled,
+            instagram = AppLimitUiState.Disabled,
             daily = DailyLimitUiState.Disabled,
         )
         val dailyUnavailable = allOff.copy(daily = DailyLimitUiState.Unavailable)

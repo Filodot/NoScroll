@@ -25,7 +25,10 @@ enum class TaskTrigger {
 /** Application whose use is unlocked by completing the task. */
 enum class TaskTarget {
     YOUTUBE_SHORTS,
+    YOUTUBE,
     INSTAGRAM,
+    PINTEREST,
+    CHROME,
 }
 
 /** Content family. Adding a new family does not change the difficulty policy. */

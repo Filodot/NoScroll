@@ -74,8 +74,8 @@ fun SettingsScreen(
                 ActionCard(
                     title = "Данные остаются на телефоне",
                     body = "NoScroll хранит настройки, агрегированное время, результаты заданий и " +
-                        "причины Emergency Stop только на устройстве. Содержимое экранов YouTube " +
-                        "и Instagram, названия видео, историю просмотров и введённый текст " +
+                        "причины Emergency Stop только на устройстве. Содержимое экранов целевых " +
+                        "приложений, названия видео, историю просмотров и введённый текст " +
                         "приложение не сохраняет.",
                     actionLabel = "Политика приватности",
                     onClick = { onAction(SettingsAction.OpenPrivacyDocument) },
@@ -271,7 +271,7 @@ private fun DiagnosticsCard(state: SettingsUiState) {
             Spacer(Modifier.height(8.dp))
             Text(
                 text = "Диагностика содержит только коды и счётчики — без текста и элементов " +
-                    "экрана YouTube или Instagram.",
+                "экрана целевых приложений.",
                 style = MaterialTheme.typography.bodyMedium,
             )
         }

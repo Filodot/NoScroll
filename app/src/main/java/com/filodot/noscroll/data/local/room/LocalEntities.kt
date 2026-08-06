@@ -15,6 +15,10 @@ data class DailyUsageEntity(
     val shortsSeconds: Long,
     @ColumnInfo(name = "instagram_seconds", defaultValue = "0")
     val instagramSeconds: Long = 0,
+    @ColumnInfo(name = "pinterest_seconds", defaultValue = "0")
+    val pinterestSeconds: Long = 0,
+    @ColumnInfo(name = "chrome_seconds", defaultValue = "0")
+    val chromeSeconds: Long = 0,
     @ColumnInfo(name = "emergency_youtube_seconds", defaultValue = "0")
     val emergencyYoutubeSeconds: Long,
     @ColumnInfo(name = "gates_shown")
@@ -49,6 +53,18 @@ data class GateCycleEntity(
     val instagramUsedSeconds: Long = 0,
     @ColumnInfo(name = "instagram_entry_cooldown_until_epoch_millis")
     val instagramEntryCooldownUntilEpochMillis: Long? = null,
+    @ColumnInfo(name = "youtube_used_seconds", defaultValue = "0")
+    val youtubeUsedSeconds: Long = 0,
+    @ColumnInfo(name = "youtube_entry_cooldown_until_epoch_millis")
+    val youtubeEntryCooldownUntilEpochMillis: Long? = null,
+    @ColumnInfo(name = "pinterest_used_seconds", defaultValue = "0")
+    val pinterestUsedSeconds: Long = 0,
+    @ColumnInfo(name = "pinterest_entry_cooldown_until_epoch_millis")
+    val pinterestEntryCooldownUntilEpochMillis: Long? = null,
+    @ColumnInfo(name = "chrome_used_seconds", defaultValue = "0")
+    val chromeUsedSeconds: Long = 0,
+    @ColumnInfo(name = "chrome_entry_cooldown_until_epoch_millis")
+    val chromeEntryCooldownUntilEpochMillis: Long? = null,
     @ColumnInfo(name = "difficulty_load_seconds", defaultValue = "0")
     val difficultyLoadSeconds: Long = 0,
     @ColumnInfo(name = "difficulty_load_updated_at_epoch_millis")

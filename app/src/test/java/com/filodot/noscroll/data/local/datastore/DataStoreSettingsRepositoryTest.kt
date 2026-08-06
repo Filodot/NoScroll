@@ -63,6 +63,12 @@ class DataStoreSettingsRepositoryTest {
             shortsIntervalMinutes = 17,
             dailyLimitEnabled = true,
             dailyLimitMinutes = 135,
+            youtubeGateEnabled = true,
+            youtubeIntervalMinutes = 13,
+            pinterestGateEnabled = true,
+            pinterestIntervalMinutes = 11,
+            chromeGateEnabled = true,
+            chromeIntervalMinutes = 19,
             enabledTaskTypes = setOf(TaskType.ARITHMETIC, TaskType.LEARNING),
             selectedLearningCourseIds = setOf("course-python", "course-sql"),
             preset = LimitPreset.CUSTOM,
@@ -74,7 +80,7 @@ class DataStoreSettingsRepositoryTest {
             accessibilityDisclosureAcceptedAt = Instant.parse("2026-07-14T01:02:03Z"),
             usageDisclosureSeenAt = Instant.parse("2026-07-14T04:05:06Z"),
             detectorRulesVersion = 9,
-            settingsSchemaVersion = 4,
+            settingsSchemaVersion = UserSettings.SETTINGS_SCHEMA_VERSION,
         )
 
         repository.save(expected)
@@ -132,6 +138,9 @@ class DataStoreSettingsRepositoryTest {
                 intPreferencesKey("shorts_interval_minutes") to -50,
                 intPreferencesKey("daily_limit_minutes") to 13,
                 intPreferencesKey("instagram_interval_minutes") to Int.MAX_VALUE,
+                intPreferencesKey("youtube_interval_minutes") to 0,
+                intPreferencesKey("pinterest_interval_minutes") to 31,
+                intPreferencesKey("chrome_interval_minutes") to -1,
                 intPreferencesKey("difficulty_medium_threshold_minutes") to 200,
                 intPreferencesKey("difficulty_hard_threshold_minutes") to 1,
                 intPreferencesKey("difficulty_decay_break_minutes") to 0,

@@ -25,7 +25,11 @@ import com.filodot.noscroll.core.model.TaskCompletionMode
 import com.filodot.noscroll.core.model.TaskTarget
 import com.filodot.noscroll.core.model.TaskType
 import com.filodot.noscroll.core.model.TaskTrigger
+import com.filodot.noscroll.core.model.UserSettings
 import com.filodot.noscroll.core.policy.PolicyEngine
+import com.filodot.noscroll.core.policy.AppGateDecision
+import com.filodot.noscroll.core.policy.AppGateInput
+import com.filodot.noscroll.core.policy.AppGatePolicy
 import com.filodot.noscroll.core.tasks.LocalTaskFactory
 import com.filodot.noscroll.core.tasks.TaskDifficultyConfig
 import com.filodot.noscroll.core.tasks.TaskDifficultyPolicy
@@ -110,6 +114,7 @@ class MonitoringCoordinator(
     private val wallClock = WallClock(Instant::now)
     private val detector = YouTubeShortsDetector()
     private val policyEngine = PolicyEngine()
+    private val appGatePolicy = AppGatePolicy()
     private val taskDifficultyPolicy = TaskDifficultyPolicy()
     private val taskFactory = LocalTaskFactory(wallClock)
     private val learningTaskFactory = LearningGateTaskFactory(learningRepository, wallClock)
@@ -137,7 +142,9 @@ class MonitoringCoordinator(
     private var youtubeRemainderMillis = 0L
     private var shortsRemainderMillis = 0L
     private var instagramRemainderMillis = 0L
-    private var instagramGrantedUntil: Instant? = null
+    private var pinterestRemainderMillis = 0L
+    private var chromeRemainderMillis = 0L
+    private val volatileGrantedUntil = mutableMapOf<TaskTarget, Instant>()
     private var emergencyOverrideActive = false
     private var activeService: NoScrollAccessibilityService? = null
     private var shortsEjectionBlockedUntilElapsedMillis = 0L
@@ -194,10 +201,7 @@ class MonitoringCoordinator(
                                     },
                                 )
                             }
-                            if (
-                                event.packageName ==
-                                AccessibilityAdapterController.INSTAGRAM_PACKAGE_NAME
-                            ) {
+                            if (event.packageName != AccessibilityAdapterController.YOUTUBE_PACKAGE_NAME) {
                                 latestDetectionState = ShortsDetectionState.NOT_SHORTS
                                 evaluatePolicy(triggeringEvent = event)
                                 return@collect
@@ -335,49 +339,10 @@ class MonitoringCoordinator(
             }
             usageRepository.saveDailyUsage(solvedUsage)
             val currentCycle = usageRepository.gateCycle.value
-            val synchronizedCycle = when (task.target) {
-                TaskTarget.YOUTUBE_SHORTS -> currentCycle.copy(
-                    usedSeconds = 0,
-                    pendingTaskId = null,
-                    entryCooldownUntil = entryCooldownUntil,
-                    updatedAt = now,
-                )
-
-                TaskTarget.INSTAGRAM -> currentCycle.copy(
-                    instagramUsedSeconds = 0,
-                    pendingTaskId = null,
-                    instagramEntryCooldownUntil = entryCooldownUntil,
-                    updatedAt = now,
-                )
-            }.let { updated ->
-                if (updated.localDate == now.atZone(zoneId).toLocalDate()) {
-                    updated
-                } else {
-                    cycleBeforeGrant.forDate(now.atZone(zoneId).toLocalDate(), now).copy(
-                        usedSeconds = if (task.target == TaskTarget.YOUTUBE_SHORTS) {
-                            0
-                        } else {
-                            cycleBeforeGrant.usedSeconds
-                        },
-                        instagramUsedSeconds = if (task.target == TaskTarget.INSTAGRAM) {
-                            0
-                        } else {
-                            cycleBeforeGrant.instagramUsedSeconds
-                        },
-                        pendingTaskId = null,
-                        entryCooldownUntil = if (task.target == TaskTarget.YOUTUBE_SHORTS) {
-                            entryCooldownUntil
-                        } else {
-                            cycleBeforeGrant.entryCooldownUntil
-                        },
-                        instagramEntryCooldownUntil = if (task.target == TaskTarget.INSTAGRAM) {
-                            entryCooldownUntil
-                        } else {
-                            cycleBeforeGrant.instagramEntryCooldownUntil
-                        },
-                    )
-                }
-            }
+            val today = now.atZone(zoneId).toLocalDate()
+            val synchronizedCycle = (
+                if (currentCycle.localDate == today) currentCycle else cycleBeforeGrant.forDate(today, now)
+                ).grantTarget(task.target, entryCooldownUntil, now)
             usageRepository.saveGateCycle(synchronizedCycle)
             taskRepository.clear(task.id)
             if (task.target == TaskTarget.YOUTUBE_SHORTS) {
@@ -386,7 +351,7 @@ class MonitoringCoordinator(
                     validityMillis = entryCooldownSeconds * MILLIS_PER_SECOND,
                 )
             } else {
-                instagramGrantedUntil = entryCooldownUntil
+                volatileGrantedUntil[task.target] = entryCooldownUntil
             }
             deferredIntervalGate.reset()
             latestDetectionState = ShortsDetectionState.NOT_SHORTS
@@ -426,10 +391,7 @@ class MonitoringCoordinator(
         ready.first { it }
         mutex.withLock {
             val settings = settingsRepository.settings.value
-            val targetEnabled = when (target) {
-                TaskTarget.YOUTUBE_SHORTS -> settings.shortsGateEnabled
-                TaskTarget.INSTAGRAM -> settings.instagramGateEnabled
-            }
+            val targetEnabled = settings.gateEnabled(target)
             if (
                 !settings.onboardingCompleted ||
                 !targetEnabled ||
@@ -449,7 +411,7 @@ class MonitoringCoordinator(
                 ?.toLong()
                 ?.times(SECONDS_PER_MINUTE)
             if (
-                target == TaskTarget.YOUTUBE_SHORTS &&
+                target in YOUTUBE_TARGETS &&
                 systemAccess.state.value.usageAccessGranted &&
                 dailyLimitSeconds != null &&
                 usage.youtubeSeconds >= dailyLimitSeconds
@@ -471,17 +433,11 @@ class MonitoringCoordinator(
                 .takeIf { it > 0 }
                 ?.toLong()
                 ?.times(SECONDS_PER_MINUTE)
-            val usedSeconds = when (target) {
-                TaskTarget.YOUTUBE_SHORTS -> cycle.usedSeconds
-                TaskTarget.INSTAGRAM -> cycle.instagramUsedSeconds
-            }
-            val cooldownUntil = when (target) {
-                TaskTarget.YOUTUBE_SHORTS -> cycle.entryCooldownUntil
-                TaskTarget.INSTAGRAM -> listOfNotNull(
-                    cycle.instagramEntryCooldownUntil,
-                    instagramGrantedUntil,
-                ).maxOrNull()
-            }
+            val usedSeconds = cycle.usedSecondsFor(target)
+            val cooldownUntil = listOfNotNull(
+                cycle.cooldownUntilFor(target),
+                volatileGrantedUntil[target],
+            ).maxOrNull()
             val trigger = when {
                 intervalSeconds != null && usedSeconds >= intervalSeconds ->
                     TaskTrigger.INTERVAL
@@ -574,6 +530,7 @@ class MonitoringCoordinator(
         val deltaMillis = if (previous != null && elapsed > previous) elapsed - previous else 0L
         val now = wallClock.now()
         val today = now.atZone(zoneId).toLocalDate()
+        val settings = settingsRepository.settings.value
         var usage = usageRepository.dailyUsage.value.forDate(today, now)
         var cycle = usageRepository.gateCycle.value.forDate(today, now)
         val youtubeActive = latestDeviceState.screenInteractive &&
@@ -583,6 +540,12 @@ class MonitoringCoordinator(
         val instagramActive = latestDeviceState.screenInteractive &&
             latestDeviceState.deviceUnlocked &&
             latestDeviceState.foregroundPackage == AccessibilityAdapterController.INSTAGRAM_PACKAGE_NAME
+        val pinterestActive = latestDeviceState.screenInteractive &&
+            latestDeviceState.deviceUnlocked &&
+            latestDeviceState.foregroundPackage == AccessibilityAdapterController.PINTEREST_PACKAGE_NAME
+        val chromeActive = latestDeviceState.screenInteractive &&
+            latestDeviceState.deviceUnlocked &&
+            latestDeviceState.foregroundPackage == AccessibilityAdapterController.CHROME_PACKAGE_NAME
         var observedShortsSeconds = 0L
 
         if (youtubeActive && deltaMillis > 0) {
@@ -601,6 +564,12 @@ class MonitoringCoordinator(
                     lastUpdatedElapsedMillis = elapsed,
                     updatedAt = now,
                 )
+                if (settings.youtubeGateEnabled) {
+                    cycle = cycle.copy(
+                        youtubeUsedSeconds = cycle.youtubeUsedSeconds.saturatingAdd(seconds),
+                        updatedAt = now,
+                    )
+                }
                 if (emergencyActive) {
                     emergencyRepository.state.value.activeEvent?.let { active ->
                         emergencyRepository.activate(
@@ -626,10 +595,12 @@ class MonitoringCoordinator(
                     shortsSeconds = usage.shortsSeconds.saturatingAdd(seconds),
                     updatedAt = now,
                 )
-                cycle = cycle.copy(
-                    usedSeconds = cycle.usedSeconds.saturatingAdd(seconds),
-                    updatedAt = now,
-                )
+                if (settings.shortsGateEnabled) {
+                    cycle = cycle.copy(
+                        usedSeconds = cycle.usedSeconds.saturatingAdd(seconds),
+                        updatedAt = now,
+                    )
+                }
             }
         } else {
             shortsRemainderMillis = 0
@@ -644,13 +615,55 @@ class MonitoringCoordinator(
                     instagramSeconds = usage.instagramSeconds.saturatingAdd(seconds),
                     updatedAt = now,
                 )
-                cycle = cycle.copy(
-                    instagramUsedSeconds = cycle.instagramUsedSeconds.saturatingAdd(seconds),
-                    updatedAt = now,
-                )
+                if (settings.instagramGateEnabled) {
+                    cycle = cycle.copy(
+                        instagramUsedSeconds = cycle.instagramUsedSeconds.saturatingAdd(seconds),
+                        updatedAt = now,
+                    )
+                }
             }
         } else {
             instagramRemainderMillis = 0
+        }
+
+        if (pinterestActive && deltaMillis > 0) {
+            val total = pinterestRemainderMillis.saturatingAdd(deltaMillis)
+            val seconds = total / MILLIS_PER_SECOND
+            pinterestRemainderMillis = total % MILLIS_PER_SECOND
+            if (seconds > 0) {
+                usage = usage.copy(
+                    pinterestSeconds = usage.pinterestSeconds.saturatingAdd(seconds),
+                    updatedAt = now,
+                )
+                if (settings.pinterestGateEnabled) {
+                    cycle = cycle.copy(
+                        pinterestUsedSeconds = cycle.pinterestUsedSeconds.saturatingAdd(seconds),
+                        updatedAt = now,
+                    )
+                }
+            }
+        } else {
+            pinterestRemainderMillis = 0
+        }
+
+        if (chromeActive && deltaMillis > 0) {
+            val total = chromeRemainderMillis.saturatingAdd(deltaMillis)
+            val seconds = total / MILLIS_PER_SECOND
+            chromeRemainderMillis = total % MILLIS_PER_SECOND
+            if (seconds > 0) {
+                usage = usage.copy(
+                    chromeSeconds = usage.chromeSeconds.saturatingAdd(seconds),
+                    updatedAt = now,
+                )
+                if (settings.chromeGateEnabled) {
+                    cycle = cycle.copy(
+                        chromeUsedSeconds = cycle.chromeUsedSeconds.saturatingAdd(seconds),
+                        updatedAt = now,
+                    )
+                }
+            }
+        } else {
+            chromeRemainderMillis = 0
         }
 
         if (observedShortsSeconds > 0) {
@@ -675,6 +688,8 @@ class MonitoringCoordinator(
             youtubeRemainderMillis = 0
             shortsRemainderMillis = 0
             instagramRemainderMillis = 0
+            pinterestRemainderMillis = 0
+            chromeRemainderMillis = 0
         }
         latestDeviceState = state
         if (
@@ -732,12 +747,24 @@ class MonitoringCoordinator(
             emergencyActive = emergencyOverrideActive ||
                 settingsRepository.settings.value.emergencyActive,
         )
-        if (
-            latestDeviceState.foregroundPackage ==
-            AccessibilityAdapterController.INSTAGRAM_PACKAGE_NAME
-        ) {
-            evaluateInstagramPolicyLocked(usage, cycle, effectiveSettings, access.accessibilityGranted)
-            return
+        val foregroundTarget = latestDeviceState.foregroundPackage.toWholeAppTarget()
+        if (foregroundTarget != null) {
+            val dailyLimitReached = foregroundTarget == TaskTarget.YOUTUBE &&
+                effectiveSettings.dailyLimitEnabled &&
+                access.usageAccessGranted &&
+                usage.youtubeSeconds >= effectiveSettings.dailyLimitMinutes
+                .coerceAtLeast(1).toLong() * SECONDS_PER_MINUTE
+            if (!dailyLimitReached && evaluateAppPolicyLocked(
+                    target = foregroundTarget,
+                    usage = usage,
+                    cycle = cycle,
+                    settings = effectiveSettings,
+                    accessibilityGranted = access.accessibilityGranted,
+                )
+            ) {
+                return
+            }
+            if (foregroundTarget != TaskTarget.YOUTUBE) return
         }
         val intervalDue = effectiveSettings.shortsGateEnabled &&
             effectiveSettings.shortsIntervalMinutes > 0 &&
@@ -849,41 +876,37 @@ class MonitoringCoordinator(
         activeService?.ejectBlockedApp(label)
     }
 
-    private suspend fun evaluateInstagramPolicyLocked(
+    /** Returns true only when this app gate actively enforces a pending or newly due challenge. */
+    private suspend fun evaluateAppPolicyLocked(
+        target: TaskTarget,
         usage: DailyUsage,
         cycle: GateCycle,
         settings: com.filodot.noscroll.core.model.UserSettings,
         accessibilityGranted: Boolean,
-    ) {
-        if (
-            !settings.instagramGateEnabled ||
-            !accessibilityGranted ||
-            settings.emergencyActive ||
-            emergencyRepository.state.value.isActive
-        ) {
-            return
-        }
+    ): Boolean {
         val now = wallClock.now()
         val existing = taskRepository.pendingTask.value
-        if (existing?.target == TaskTarget.INSTAGRAM) {
-            showEnforcement(existing.toUi(grantMinutesFor(TaskTarget.INSTAGRAM)))
-            requestTargetEjection()
-            return
-        }
-        val intervalSeconds = settings.instagramIntervalMinutes
-            .coerceAtLeast(1)
-            .toLong() * SECONDS_PER_MINUTE
         val cooldownUntil = listOfNotNull(
-            cycle.instagramEntryCooldownUntil,
-            instagramGrantedUntil,
+            cycle.cooldownUntilFor(target),
+            volatileGrantedUntil[target],
         ).maxOrNull()
-        val trigger = when {
-            cycle.instagramUsedSeconds >= intervalSeconds -> TaskTrigger.INTERVAL
-            cooldownUntil?.let(now::isBefore) != true -> TaskTrigger.ENTRY
-            else -> null
-        } ?: return
-        showEnforcement(ensureTask(cycle, usage, trigger, TaskTarget.INSTAGRAM))
+        val decision = appGatePolicy.decide(
+            input = AppGateInput(
+                enabled = settings.gateEnabled(target),
+                accessibilityGranted = accessibilityGranted,
+                bypassActive = settings.emergencyActive ||
+                    emergencyRepository.state.value.isActive,
+                intervalMinutes = settings.intervalMinutesFor(target),
+                usedSeconds = cycle.usedSecondsFor(target),
+                cooldownUntil = cooldownUntil,
+                pendingTrigger = existing?.takeIf { it.target == target }?.trigger,
+            ),
+            now = now,
+        )
+        val trigger = (decision as? AppGateDecision.RequireTask)?.trigger ?: return false
+        showEnforcement(ensureTask(cycle, usage, trigger, target))
         requestTargetEjection()
+        return true
     }
 
     private suspend fun handleDeferredInterval(
@@ -1063,6 +1086,9 @@ class MonitoringCoordinator(
                 updatedAt = now,
                 entryCooldownUntil = entryCooldownUntil?.takeIf(now::isBefore),
                 instagramEntryCooldownUntil = instagramEntryCooldownUntil?.takeIf(now::isBefore),
+                youtubeEntryCooldownUntil = youtubeEntryCooldownUntil?.takeIf(now::isBefore),
+                pinterestEntryCooldownUntil = pinterestEntryCooldownUntil?.takeIf(now::isBefore),
+                chromeEntryCooldownUntil = chromeEntryCooldownUntil?.takeIf(now::isBefore),
                 difficultyLoadSeconds = difficultyLoadSeconds,
                 difficultyLoadUpdatedAt = difficultyLoadUpdatedAt,
                 difficultyRecoverySeconds = difficultyRecoverySeconds,
@@ -1124,10 +1150,7 @@ class MonitoringCoordinator(
 
     private fun grantMinutesFor(target: TaskTarget): Int {
         val settings = settingsRepository.settings.value
-        return when (target) {
-            TaskTarget.YOUTUBE_SHORTS -> settings.shortsIntervalMinutes
-            TaskTarget.INSTAGRAM -> settings.instagramIntervalMinutes
-        }
+        return settings.intervalMinutesFor(target)
     }
 
     private fun GateCycle.toDifficultyState(): TaskDifficultyState = TaskDifficultyState(
@@ -1238,6 +1261,77 @@ class MonitoringCoordinator(
         }
     }
 
+    private fun UserSettings.gateEnabled(target: TaskTarget): Boolean = when (target) {
+        TaskTarget.YOUTUBE_SHORTS -> shortsGateEnabled
+        TaskTarget.YOUTUBE -> youtubeGateEnabled
+        TaskTarget.INSTAGRAM -> instagramGateEnabled
+        TaskTarget.PINTEREST -> pinterestGateEnabled
+        TaskTarget.CHROME -> chromeGateEnabled
+    }
+
+    private fun UserSettings.intervalMinutesFor(target: TaskTarget): Int = when (target) {
+        TaskTarget.YOUTUBE_SHORTS -> shortsIntervalMinutes
+        TaskTarget.YOUTUBE -> youtubeIntervalMinutes
+        TaskTarget.INSTAGRAM -> instagramIntervalMinutes
+        TaskTarget.PINTEREST -> pinterestIntervalMinutes
+        TaskTarget.CHROME -> chromeIntervalMinutes
+    }
+
+    private fun GateCycle.usedSecondsFor(target: TaskTarget): Long = when (target) {
+        TaskTarget.YOUTUBE_SHORTS -> usedSeconds
+        TaskTarget.YOUTUBE -> youtubeUsedSeconds
+        TaskTarget.INSTAGRAM -> instagramUsedSeconds
+        TaskTarget.PINTEREST -> pinterestUsedSeconds
+        TaskTarget.CHROME -> chromeUsedSeconds
+    }
+
+    private fun GateCycle.cooldownUntilFor(target: TaskTarget): Instant? = when (target) {
+        TaskTarget.YOUTUBE_SHORTS -> entryCooldownUntil
+        TaskTarget.YOUTUBE -> youtubeEntryCooldownUntil
+        TaskTarget.INSTAGRAM -> instagramEntryCooldownUntil
+        TaskTarget.PINTEREST -> pinterestEntryCooldownUntil
+        TaskTarget.CHROME -> chromeEntryCooldownUntil
+    }
+
+    private fun GateCycle.grantTarget(
+        target: TaskTarget,
+        cooldownUntil: Instant,
+        now: Instant,
+    ): GateCycle = when (target) {
+        TaskTarget.YOUTUBE_SHORTS -> copy(
+            usedSeconds = 0,
+            entryCooldownUntil = cooldownUntil,
+        )
+
+        TaskTarget.YOUTUBE -> copy(
+            youtubeUsedSeconds = 0,
+            youtubeEntryCooldownUntil = cooldownUntil,
+        )
+
+        TaskTarget.INSTAGRAM -> copy(
+            instagramUsedSeconds = 0,
+            instagramEntryCooldownUntil = cooldownUntil,
+        )
+
+        TaskTarget.PINTEREST -> copy(
+            pinterestUsedSeconds = 0,
+            pinterestEntryCooldownUntil = cooldownUntil,
+        )
+
+        TaskTarget.CHROME -> copy(
+            chromeUsedSeconds = 0,
+            chromeEntryCooldownUntil = cooldownUntil,
+        )
+    }.copy(pendingTaskId = null, updatedAt = now)
+
+    private fun String?.toWholeAppTarget(): TaskTarget? = when (this) {
+        AccessibilityAdapterController.YOUTUBE_PACKAGE_NAME -> TaskTarget.YOUTUBE
+        AccessibilityAdapterController.INSTAGRAM_PACKAGE_NAME -> TaskTarget.INSTAGRAM
+        AccessibilityAdapterController.PINTEREST_PACKAGE_NAME -> TaskTarget.PINTEREST
+        AccessibilityAdapterController.CHROME_PACKAGE_NAME -> TaskTarget.CHROME
+        else -> null
+    }
+
     private fun Long.saturatingAdd(other: Long): Long =
         if (other > Long.MAX_VALUE - this) Long.MAX_VALUE else this + other
 
@@ -1264,6 +1358,7 @@ class MonitoringCoordinator(
         private const val FAILURE_HEARTBEAT_STALE = "HEARTBEAT_STALE"
         private const val FAILURE_RECONCILIATION = "RECONCILIATION"
         private const val FAILURE_TRANSIENT_INTERRUPT = "TRANSIENT_INTERRUPT"
+        private val YOUTUBE_TARGETS = setOf(TaskTarget.YOUTUBE_SHORTS, TaskTarget.YOUTUBE)
     }
 }
 

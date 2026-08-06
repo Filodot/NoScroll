@@ -145,7 +145,7 @@ private fun TaskGateContent(
     task: EnforcementUiState.TaskGate,
     onAction: (BlockingOverlayAction) -> Unit,
 ) {
-    val appLabel = if (task.target == TaskTarget.INSTAGRAM) "Instagram" else "Shorts"
+    val appLabel = task.target.label()
     OverlayTitle(
         if (task.trigger == TaskTrigger.ENTRY) "Вход в $appLabel" else "Пора сделать паузу",
     )
@@ -164,9 +164,9 @@ private fun TaskGateContent(
         text = if (task.trigger == TaskTrigger.ENTRY) {
             "Сначала выполните задание здесь. После этого $appLabel откроется на " +
                 "${task.grantMinutes} минут"
-        } else if (task.target == TaskTarget.INSTAGRAM) {
+        } else if (task.target != TaskTarget.YOUTUBE_SHORTS) {
             "Интервал использования закончился. Выполните задание, чтобы снова открыть " +
-                "Instagram на ${task.grantMinutes} минут"
+                "$appLabel на ${task.grantMinutes} минут"
         } else {
             "Пауза началась после вашего следующего свайпа. Выполните задание, чтобы снова " +
                 "открыть Shorts на ${task.grantMinutes} минут"
@@ -429,11 +429,7 @@ private fun EscapeActions(
                 ) {
                     Text(
                         if (task?.answerStatus == TaskAnswerStatus.CORRECT) {
-                            if (task.target == TaskTarget.INSTAGRAM) {
-                                "Открыть Instagram"
-                            } else {
-                                "Открыть YouTube"
-                            }
+                            "Открыть ${task.target.label()}"
                         } else {
                             "На главный экран"
                         },
@@ -459,6 +455,14 @@ private fun EscapeActions(
             }
         }
     }
+}
+
+private fun TaskTarget.label(): String = when (this) {
+    TaskTarget.YOUTUBE_SHORTS -> "Shorts"
+    TaskTarget.YOUTUBE -> "YouTube"
+    TaskTarget.INSTAGRAM -> "Instagram"
+    TaskTarget.PINTEREST -> "Pinterest"
+    TaskTarget.CHROME -> "Chrome"
 }
 
 @Composable

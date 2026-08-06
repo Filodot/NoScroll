@@ -100,7 +100,7 @@ class AccessibilityAdapterControllerTest {
     }
 
     @Test
-    fun `controller exposes supported YouTube and Instagram events only`() = runTest {
+    fun `controller exposes events for every app gate target`() = runTest {
         val scheduler = ManualAccessibilityScanScheduler()
         val controller = controller(scheduler)
         val received = mutableListOf<AccessibilityWindowEvent>()
@@ -151,6 +151,23 @@ class AccessibilityAdapterControllerTest {
             AccessibilityAdapterController.INSTAGRAM_PACKAGE_NAME,
             received.last().packageName,
         )
+
+        listOf(
+            AccessibilityAdapterController.PINTEREST_PACKAGE_NAME,
+            AccessibilityAdapterController.CHROME_PACKAGE_NAME,
+        ).forEachIndexed { index, packageName ->
+            assertTrue(
+                controller.onAccessibilityEvent(
+                    packageName = packageName,
+                    eventType = AccessibilityAdapterController.TYPE_WINDOW_STATE_CHANGED,
+                    elapsedRealtimeMillis = 400L + index,
+                ),
+            )
+            scheduler.advanceBy(500)
+            runCurrent()
+            assertEquals(packageName, received.last().packageName)
+        }
+        assertEquals(4, received.size)
     }
 
     @Test
@@ -337,6 +354,40 @@ class AccessibilityAdapterControllerTest {
         controller.onServiceInterrupted()
         assertNull(controller.capture(event))
         assertEquals(2, captures)
+    }
+
+    @Test
+    fun `non YouTube app targets never request a Shorts snapshot`() = runTest {
+        val scheduler = ManualAccessibilityScanScheduler()
+        var captures = 0
+        val controller = AccessibilityAdapterController(
+            scheduler = scheduler,
+            elapsedRealtimeMillis = scheduler::now,
+            screenStateProvider = { ScreenStateSample(true, true) },
+            snapshotCapture = {
+                captures += 1
+                null
+            },
+        )
+        controller.onServiceConnected()
+
+        listOf(
+            AccessibilityAdapterController.INSTAGRAM_PACKAGE_NAME,
+            AccessibilityAdapterController.PINTEREST_PACKAGE_NAME,
+            AccessibilityAdapterController.CHROME_PACKAGE_NAME,
+        ).forEach { packageName ->
+            assertNull(
+                controller.capture(
+                    AccessibilityWindowEvent(
+                        packageName = packageName,
+                        eventType = AccessibilityAdapterController.TYPE_WINDOW_STATE_CHANGED,
+                        elapsedRealtimeMillis = 1,
+                    ),
+                ),
+            )
+        }
+
+        assertEquals(0, captures)
     }
 
     @Test

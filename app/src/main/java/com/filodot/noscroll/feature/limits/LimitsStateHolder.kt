@@ -18,6 +18,12 @@ data class LimitsValues(
     val dailyMinutes: Int = UserSettings.DEFAULT_DAILY_LIMIT_MINUTES,
     val instagramEnabled: Boolean = true,
     val instagramMinutes: Int = UserSettings.DEFAULT_INSTAGRAM_INTERVAL_MINUTES,
+    val youtubeEnabled: Boolean = false,
+    val youtubeMinutes: Int = UserSettings.DEFAULT_YOUTUBE_INTERVAL_MINUTES,
+    val pinterestEnabled: Boolean = false,
+    val pinterestMinutes: Int = UserSettings.DEFAULT_PINTEREST_INTERVAL_MINUTES,
+    val chromeEnabled: Boolean = false,
+    val chromeMinutes: Int = UserSettings.DEFAULT_CHROME_INTERVAL_MINUTES,
 )
 
 data class LimitsUiState(
@@ -38,23 +44,31 @@ data class LimitsUiState(
             draft.shortsEnabled && draft.dailyEnabled ->
                 "Через каждые ${draft.shortsMinutes} минут Shorts появится пример. " +
                     "После ${draft.dailyMinutes} минут всего YouTube приложение будет закрыто " +
-                    "до полуночи или Emergency Stop." + instagramSummary()
+                    "до полуночи или Emergency Stop." + appIntervalsSummary()
 
             draft.shortsEnabled ->
                 "Через каждые ${draft.shortsMinutes} минут Shorts появится пример. " +
-                    "Дневной лимит YouTube выключен." + instagramSummary()
+                    "Дневной лимит YouTube выключен." + appIntervalsSummary()
 
             draft.dailyEnabled ->
                 "Паузы в Shorts выключены. После ${draft.dailyMinutes} минут всего YouTube " +
-                    "приложение будет закрыто до полуночи или Emergency Stop." + instagramSummary()
+                    "приложение будет закрыто до полуночи или Emergency Stop." + appIntervalsSummary()
 
-            else -> "Паузы в Shorts и дневной лимит выключены." + instagramSummary()
+            else -> "Паузы в Shorts и дневной лимит выключены." + appIntervalsSummary()
         }
 
-    private fun instagramSummary(): String = if (draft.instagramEnabled) {
-        " Instagram доступен интервалами по ${draft.instagramMinutes} минут."
-    } else {
-        " Ограничение Instagram выключено."
+    private fun appIntervalsSummary(): String {
+        val enabled = buildList {
+            if (draft.youtubeEnabled) add("YouTube — ${draft.youtubeMinutes}")
+            if (draft.instagramEnabled) add("Instagram — ${draft.instagramMinutes}")
+            if (draft.pinterestEnabled) add("Pinterest — ${draft.pinterestMinutes}")
+            if (draft.chromeEnabled) add("Chrome — ${draft.chromeMinutes}")
+        }
+        return if (enabled.isEmpty()) {
+            " Интервальные ограничения приложений выключены."
+        } else {
+            " Интервалы доступа: ${enabled.joinToString(", ")} мин."
+        }
     }
 }
 
@@ -66,12 +80,24 @@ sealed interface LimitsAction {
     data class SetDailyMinutes(val minutes: Int) : LimitsAction
     data class SetInstagramEnabled(val enabled: Boolean) : LimitsAction
     data class SetInstagramMinutes(val minutes: Int) : LimitsAction
+    data class SetYoutubeEnabled(val enabled: Boolean) : LimitsAction
+    data class SetYoutubeMinutes(val minutes: Int) : LimitsAction
+    data class SetPinterestEnabled(val enabled: Boolean) : LimitsAction
+    data class SetPinterestMinutes(val minutes: Int) : LimitsAction
+    data class SetChromeEnabled(val enabled: Boolean) : LimitsAction
+    data class SetChromeMinutes(val minutes: Int) : LimitsAction
     data object DecrementShorts : LimitsAction
     data object IncrementShorts : LimitsAction
     data object DecrementDaily : LimitsAction
     data object IncrementDaily : LimitsAction
     data object DecrementInstagram : LimitsAction
     data object IncrementInstagram : LimitsAction
+    data object DecrementYoutube : LimitsAction
+    data object IncrementYoutube : LimitsAction
+    data object DecrementPinterest : LimitsAction
+    data object IncrementPinterest : LimitsAction
+    data object DecrementChrome : LimitsAction
+    data object IncrementChrome : LimitsAction
     data object Save : LimitsAction
     data object Cancel : LimitsAction
 }
@@ -123,6 +149,24 @@ class LimitsStateHolder(
             ) { it.copy(instagramEnabled = action.enabled) }
 
             is LimitsAction.SetInstagramMinutes -> setInstagramMinutes(action.minutes)
+            is LimitsAction.SetYoutubeEnabled -> setAppEnabled(
+                "YouTube",
+                action.enabled,
+            ) { it.copy(youtubeEnabled = action.enabled) }
+
+            is LimitsAction.SetYoutubeMinutes -> setYoutubeMinutes(action.minutes)
+            is LimitsAction.SetPinterestEnabled -> setAppEnabled(
+                "Pinterest",
+                action.enabled,
+            ) { it.copy(pinterestEnabled = action.enabled) }
+
+            is LimitsAction.SetPinterestMinutes -> setPinterestMinutes(action.minutes)
+            is LimitsAction.SetChromeEnabled -> setAppEnabled(
+                "Chrome",
+                action.enabled,
+            ) { it.copy(chromeEnabled = action.enabled) }
+
+            is LimitsAction.SetChromeMinutes -> setChromeMinutes(action.minutes)
             LimitsAction.DecrementShorts ->
                 setShortsMinutes(mutableState.value.draft.shortsMinutes - 1)
 
@@ -144,6 +188,24 @@ class LimitsStateHolder(
 
             LimitsAction.IncrementInstagram ->
                 setInstagramMinutes(mutableState.value.draft.instagramMinutes + 1)
+
+            LimitsAction.DecrementYoutube ->
+                setYoutubeMinutes(mutableState.value.draft.youtubeMinutes - 1)
+
+            LimitsAction.IncrementYoutube ->
+                setYoutubeMinutes(mutableState.value.draft.youtubeMinutes + 1)
+
+            LimitsAction.DecrementPinterest ->
+                setPinterestMinutes(mutableState.value.draft.pinterestMinutes - 1)
+
+            LimitsAction.IncrementPinterest ->
+                setPinterestMinutes(mutableState.value.draft.pinterestMinutes + 1)
+
+            LimitsAction.DecrementChrome ->
+                setChromeMinutes(mutableState.value.draft.chromeMinutes - 1)
+
+            LimitsAction.IncrementChrome ->
+                setChromeMinutes(mutableState.value.draft.chromeMinutes + 1)
 
             LimitsAction.Save -> save()
             LimitsAction.Cancel -> cancel()
@@ -203,6 +265,38 @@ class LimitsStateHolder(
         }
     }
 
+    private fun setYoutubeMinutes(minutes: Int) = setAppMinutes("YouTube", minutes) {
+        it.copy(youtubeMinutes = minutes.coerceIn(SHORTS_INTERVAL_RANGE))
+    }
+
+    private fun setPinterestMinutes(minutes: Int) = setAppMinutes("Pinterest", minutes) {
+        it.copy(pinterestMinutes = minutes.coerceIn(SHORTS_INTERVAL_RANGE))
+    }
+
+    private fun setChromeMinutes(minutes: Int) = setAppMinutes("Chrome", minutes) {
+        it.copy(chromeMinutes = minutes.coerceIn(SHORTS_INTERVAL_RANGE))
+    }
+
+    private fun setAppEnabled(
+        label: String,
+        enabled: Boolean,
+        transform: (LimitsValues) -> LimitsValues,
+    ) = updateDraft(
+        announcement = "Ограничение $label ${if (enabled) "включено" else "выключено"}",
+        transform = transform,
+    )
+
+    private fun setAppMinutes(
+        label: String,
+        minutes: Int,
+        transform: (LimitsValues) -> LimitsValues,
+    ) {
+        val normalized = minutes.coerceIn(SHORTS_INTERVAL_RANGE)
+        updateDraft(announcement = "Интервал $label: $normalized минут") {
+            transform(it).copy(preset = LimitPreset.CUSTOM)
+        }
+    }
+
     private fun save() {
         val current = mutableState.value
         if (!current.hasUnsavedChanges) return
@@ -243,6 +337,9 @@ class LimitsStateHolder(
                     DAILY_LIMIT_STEP_MINUTES * DAILY_LIMIT_STEP_MINUTES
                 ).coerceIn(DAILY_LIMIT_RANGE),
             instagramMinutes = values.instagramMinutes.coerceIn(SHORTS_INTERVAL_RANGE),
+            youtubeMinutes = values.youtubeMinutes.coerceIn(SHORTS_INTERVAL_RANGE),
+            pinterestMinutes = values.pinterestMinutes.coerceIn(SHORTS_INTERVAL_RANGE),
+            chromeMinutes = values.chromeMinutes.coerceIn(SHORTS_INTERVAL_RANGE),
         )
 
         fun presetLabel(preset: LimitPreset): String = when (preset) {

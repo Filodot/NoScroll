@@ -45,6 +45,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.filodot.noscroll.core.model.LimitPreset
+import com.filodot.noscroll.core.model.UserSettings
 import com.filodot.noscroll.core.settings.DAILY_LIMIT_RANGE
 import com.filodot.noscroll.core.settings.DAILY_LIMIT_STEP_MINUTES
 import com.filodot.noscroll.core.settings.LimitPresets
@@ -99,7 +100,7 @@ fun LimitsScreen(
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "Настройте интервалы Shorts, Instagram и дневной предел YouTube.",
+                        text = "Настройте интервалы Shorts и приложений, а также дневной предел YouTube.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyLarge,
                     )
@@ -124,7 +125,53 @@ fun LimitsScreen(
                     Spacer(Modifier.height(20.dp))
                     ShortsSettingsCard(state.draft, onAction)
                     Spacer(Modifier.height(16.dp))
-                    InstagramSettingsCard(state.draft, onAction)
+                    AppIntervalSettingsCard(
+                        label = "Весь YouTube",
+                        description = "Считается всё время внутри YouTube, включая Shorts.",
+                        recommendedMinutes = UserSettings.DEFAULT_YOUTUBE_INTERVAL_MINUTES,
+                        enabled = state.draft.youtubeEnabled,
+                        minutes = state.draft.youtubeMinutes,
+                        onEnabledChange = { onAction(LimitsAction.SetYoutubeEnabled(it)) },
+                        onMinutesChange = { onAction(LimitsAction.SetYoutubeMinutes(it)) },
+                        onDecrement = { onAction(LimitsAction.DecrementYoutube) },
+                        onIncrement = { onAction(LimitsAction.IncrementYoutube) },
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    AppIntervalSettingsCard(
+                        label = "Instagram",
+                        description = "Считается всё время внутри Instagram, не только Reels.",
+                        recommendedMinutes = UserSettings.DEFAULT_INSTAGRAM_INTERVAL_MINUTES,
+                        enabled = state.draft.instagramEnabled,
+                        minutes = state.draft.instagramMinutes,
+                        onEnabledChange = { onAction(LimitsAction.SetInstagramEnabled(it)) },
+                        onMinutesChange = { onAction(LimitsAction.SetInstagramMinutes(it)) },
+                        onDecrement = { onAction(LimitsAction.DecrementInstagram) },
+                        onIncrement = { onAction(LimitsAction.IncrementInstagram) },
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    AppIntervalSettingsCard(
+                        label = "Pinterest",
+                        description = "Считается всё время внутри приложения Pinterest.",
+                        recommendedMinutes = UserSettings.DEFAULT_PINTEREST_INTERVAL_MINUTES,
+                        enabled = state.draft.pinterestEnabled,
+                        minutes = state.draft.pinterestMinutes,
+                        onEnabledChange = { onAction(LimitsAction.SetPinterestEnabled(it)) },
+                        onMinutesChange = { onAction(LimitsAction.SetPinterestMinutes(it)) },
+                        onDecrement = { onAction(LimitsAction.DecrementPinterest) },
+                        onIncrement = { onAction(LimitsAction.IncrementPinterest) },
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    AppIntervalSettingsCard(
+                        label = "Chrome",
+                        description = "Считается всё время внутри Chrome, независимо от сайта.",
+                        recommendedMinutes = UserSettings.DEFAULT_CHROME_INTERVAL_MINUTES,
+                        enabled = state.draft.chromeEnabled,
+                        minutes = state.draft.chromeMinutes,
+                        onEnabledChange = { onAction(LimitsAction.SetChromeEnabled(it)) },
+                        onMinutesChange = { onAction(LimitsAction.SetChromeMinutes(it)) },
+                        onDecrement = { onAction(LimitsAction.DecrementChrome) },
+                        onIncrement = { onAction(LimitsAction.IncrementChrome) },
+                    )
                     Spacer(Modifier.height(16.dp))
                     DailySettingsCard(state.draft, onAction)
                     if (state.showDailyBeforeShortsWarning) {
@@ -144,44 +191,49 @@ fun LimitsScreen(
 }
 
 @Composable
-private fun InstagramSettingsCard(
-    values: LimitsValues,
-    onAction: (LimitsAction) -> Unit,
+private fun AppIntervalSettingsCard(
+    label: String,
+    description: String,
+    recommendedMinutes: Int,
+    enabled: Boolean,
+    minutes: Int,
+    onEnabledChange: (Boolean) -> Unit,
+    onMinutesChange: (Int) -> Unit,
+    onDecrement: () -> Unit,
+    onIncrement: () -> Unit,
 ) {
     SettingsCard(
-        title = "Интервалы Instagram",
-        enabled = values.instagramEnabled,
-        onEnabledChange = { onAction(LimitsAction.SetInstagramEnabled(it)) },
+        title = "Интервалы $label",
+        enabled = enabled,
+        onEnabledChange = onEnabledChange,
     ) {
         ValueHeader(
-            value = "${values.instagramMinutes} мин",
-            recommended = values.instagramMinutes == 10,
+            value = "$minutes мин",
+            recommended = minutes == recommendedMinutes,
         )
         Slider(
-            value = values.instagramMinutes.toFloat(),
-            onValueChange = { onAction(LimitsAction.SetInstagramMinutes(it.toInt())) },
+            value = minutes.toFloat(),
+            onValueChange = { onMinutesChange(it.toInt()) },
             valueRange = SHORTS_INTERVAL_RANGE.first.toFloat()..
                 SHORTS_INTERVAL_RANGE.last.toFloat(),
             steps = SHORTS_INTERVAL_RANGE.count() - 2,
-            enabled = values.instagramEnabled,
+            enabled = enabled,
             modifier = Modifier.semantics {
-                stateDescription = "${values.instagramMinutes} минут"
+                stateDescription = "$minutes минут"
             },
         )
         Stepper(
-            valueLabel = "${values.instagramMinutes} минут",
-            decrementDescription = "Уменьшить интервал Instagram",
-            incrementDescription = "Увеличить интервал Instagram",
-            canDecrement = values.instagramEnabled &&
-                values.instagramMinutes > SHORTS_INTERVAL_RANGE.first,
-            canIncrement = values.instagramEnabled &&
-                values.instagramMinutes < SHORTS_INTERVAL_RANGE.last,
-            onDecrement = { onAction(LimitsAction.DecrementInstagram) },
-            onIncrement = { onAction(LimitsAction.IncrementInstagram) },
+            valueLabel = "$minutes минут",
+            decrementDescription = "Уменьшить интервал $label",
+            incrementDescription = "Увеличить интервал $label",
+            canDecrement = enabled && minutes > SHORTS_INTERVAL_RANGE.first,
+            canIncrement = enabled && minutes < SHORTS_INTERVAL_RANGE.last,
+            onDecrement = onDecrement,
+            onIncrement = onIncrement,
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "Считается всё время внутри Instagram, не только Reels. Рекомендуем: 10 минут",
+            text = "$description Рекомендуем: $recommendedMinutes минут",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium,
         )

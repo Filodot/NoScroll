@@ -18,6 +18,8 @@ object FocusAppCatalog {
     const val TELEGRAM = "org.telegram.messenger"
     const val VK = "com.vkontakte.android"
     const val X = "com.twitter.android"
+    const val PINTEREST = "com.pinterest"
+    const val CHROME = "com.android.chrome"
 
     val apps = listOf(
         FocusAppDefinition(YOUTUBE, "YouTube"),
@@ -26,6 +28,8 @@ object FocusAppCatalog {
         FocusAppDefinition(TELEGRAM, "Telegram"),
         FocusAppDefinition(VK, "VK"),
         FocusAppDefinition(X, "X"),
+        FocusAppDefinition(PINTEREST, "Pinterest"),
+        FocusAppDefinition(CHROME, "Chrome"),
     )
 
     val supportedPackages: Set<String> = apps.mapTo(linkedSetOf()) { it.packageName }
@@ -46,4 +50,3 @@ data class FocusSession(
     fun blocks(packageName: String?, now: Instant): Boolean =
         packageName != null && isActiveAt(now) && packageName in blockedPackages
 }
-

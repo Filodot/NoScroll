@@ -54,7 +54,7 @@ class LimitsStateHolderTest {
         assertEquals(45, holder.state.value.draft.dailyMinutes)
         assertEquals(LimitPreset.BALANCED, holder.state.value.draft.preset)
         assertTrue(holder.state.value.summary.startsWith("Паузы в Shorts и дневной лимит выключены."))
-        assertTrue(holder.state.value.summary.contains("Instagram доступен интервалами по 10 минут"))
+        assertTrue(holder.state.value.summary.contains("Instagram — 10"))
     }
 
     @Test
@@ -94,6 +94,33 @@ class LimitsStateHolderTest {
         holder.dispatch(LimitsAction.DecrementInstagram)
         assertEquals(29, holder.state.value.draft.instagramMinutes)
         assertEquals(LimitPreset.CUSTOM, holder.state.value.draft.preset)
+    }
+
+    @Test
+    fun `whole app intervals are independent opt in settings`() {
+        val holder = LimitsStateHolder()
+
+        assertFalse(holder.state.value.draft.youtubeEnabled)
+        assertFalse(holder.state.value.draft.pinterestEnabled)
+        assertFalse(holder.state.value.draft.chromeEnabled)
+
+        holder.dispatch(LimitsAction.SetYoutubeEnabled(true))
+        holder.dispatch(LimitsAction.SetYoutubeMinutes(12))
+        holder.dispatch(LimitsAction.SetPinterestEnabled(true))
+        holder.dispatch(LimitsAction.SetPinterestMinutes(100))
+        holder.dispatch(LimitsAction.SetChromeEnabled(true))
+        holder.dispatch(LimitsAction.SetChromeMinutes(-1))
+
+        val values = holder.state.value.draft
+        assertTrue(values.youtubeEnabled)
+        assertEquals(12, values.youtubeMinutes)
+        assertTrue(values.pinterestEnabled)
+        assertEquals(30, values.pinterestMinutes)
+        assertTrue(values.chromeEnabled)
+        assertEquals(1, values.chromeMinutes)
+        assertTrue(holder.state.value.summary.contains("YouTube — 12"))
+        assertTrue(holder.state.value.summary.contains("Pinterest — 30"))
+        assertTrue(holder.state.value.summary.contains("Chrome — 1"))
     }
 
     @Test

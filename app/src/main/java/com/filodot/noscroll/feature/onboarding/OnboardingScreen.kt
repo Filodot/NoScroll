@@ -181,7 +181,7 @@ private fun AccessibilityDisclosureScreen(
     onAction: (OnboardingAction) -> Unit,
 ) {
     OnboardingPage(step = 3) {
-        ScreenTitle("Доступ к YouTube и Instagram")
+        ScreenTitle("Доступ к целевым приложениям")
         Spacer(Modifier.height(12.dp))
         Text(
             text = AccessibilityDisclosure,
@@ -288,7 +288,7 @@ private fun ReadinessScreen(
         ScreenTitle("Проверим готовность")
         Spacer(Modifier.height(20.dp))
         PermissionStatusRow(
-            label = "Доступ к YouTube и Instagram",
+            label = "Доступ к целевым приложениям",
             status = state.accessibilityStatus,
         )
         HorizontalDivider()
@@ -328,7 +328,7 @@ private fun ReadinessScreen(
         if (state.accessibilityStatus != PermissionUiStatus.ENABLED) {
             Spacer(Modifier.height(16.dp))
             InlineMessage(
-                text = "Чтобы запустить защиту, включите доступ к YouTube и Instagram.",
+                text = "Чтобы запустить защиту, включите доступ к целевым приложениям.",
                 error = true,
             )
         }

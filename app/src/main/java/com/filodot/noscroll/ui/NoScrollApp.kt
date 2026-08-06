@@ -54,10 +54,10 @@ import com.filodot.noscroll.feature.dashboard.DashboardMonitoringState
 import com.filodot.noscroll.feature.dashboard.DashboardScreen
 import com.filodot.noscroll.feature.dashboard.DashboardUiState
 import com.filodot.noscroll.feature.dashboard.DailyLimitUiState
+import com.filodot.noscroll.feature.dashboard.AppLimitUiState
 import com.filodot.noscroll.feature.dashboard.EmergencyUiState
 import com.filodot.noscroll.feature.dashboard.FocusAppUi
 import com.filodot.noscroll.feature.dashboard.FocusModeUiState
-import com.filodot.noscroll.feature.dashboard.InstagramLimitUiState
 import com.filodot.noscroll.feature.dashboard.ShortsLimitUiState
 import com.filodot.noscroll.feature.history.EmergencyHistoryAction
 import com.filodot.noscroll.feature.history.EmergencyHistoryEffect
@@ -207,6 +207,12 @@ fun NoScrollApp(
                 dailyMinutes = settings.dailyLimitMinutes,
                 instagramEnabled = settings.instagramGateEnabled,
                 instagramMinutes = settings.instagramIntervalMinutes,
+                youtubeEnabled = settings.youtubeGateEnabled,
+                youtubeMinutes = settings.youtubeIntervalMinutes,
+                pinterestEnabled = settings.pinterestGateEnabled,
+                pinterestMinutes = settings.pinterestIntervalMinutes,
+                chromeEnabled = settings.chromeGateEnabled,
+                chromeMinutes = settings.chromeIntervalMinutes,
             ),
             emitEffect = { effect ->
                 if (effect is LimitsEffect.Saved) scope.launch {
@@ -220,6 +226,12 @@ fun NoScrollApp(
                             dailyLimitMinutes = effect.values.dailyMinutes,
                             instagramGateEnabled = effect.values.instagramEnabled,
                             instagramIntervalMinutes = effect.values.instagramMinutes,
+                            youtubeGateEnabled = effect.values.youtubeEnabled,
+                            youtubeIntervalMinutes = effect.values.youtubeMinutes,
+                            pinterestGateEnabled = effect.values.pinterestEnabled,
+                            pinterestIntervalMinutes = effect.values.pinterestMinutes,
+                            chromeGateEnabled = effect.values.chromeEnabled,
+                            chromeIntervalMinutes = effect.values.chromeMinutes,
                         ),
                     )
                     snackbarHostState.showSnackbar("Ограничения сохранены")
@@ -411,10 +423,8 @@ fun NoScrollApp(
                                     appGraph.monitoring?.prepareChallengeForApp()
                                 }
 
-                                DashboardAction.OpenInstagramChallenge -> scope.launch {
-                                    appGraph.monitoring?.prepareChallengeForApp(
-                                        TaskTarget.INSTAGRAM,
-                                    )
+                                is DashboardAction.OpenAppChallenge -> scope.launch {
+                                    appGraph.monitoring?.prepareChallengeForApp(action.target)
                                 }
 
                                 is DashboardAction.StartFocusMode -> scope.launch {
@@ -749,7 +759,7 @@ private fun InAppChallengeHost(
                             )
                             snackbarHostState.showSnackbar(
                                 if (current is EnforcementUiState.TaskGate) {
-                                    "Shorts останутся заблокированы до решения задания"
+                                    "Доступ к ${current.target.appLabel()} останется закрыт до решения задания"
                                 } else {
                                     "Дневной лимит продолжает действовать"
                                 },
@@ -763,11 +773,7 @@ private fun InAppChallengeHost(
                         monitoring.completeChallengePresentation()
                         context.openTarget(target) {
                             snackbarHostState.showSnackbar(
-                                if (target == TaskTarget.INSTAGRAM) {
-                                    "Не удалось открыть Instagram"
-                                } else {
-                                    "Не удалось открыть YouTube"
-                                },
+                                "Не удалось открыть ${target.appLabel()}",
                             )
                         }
                     }
@@ -836,25 +842,50 @@ private fun buildDashboardState(
         } else {
             ShortsLimitUiState.Disabled
         },
-        instagram = if (settings.instagramGateEnabled) {
-            InstagramLimitUiState.Enabled(
-                cycleUsedSeconds = cycle.instagramUsedSeconds,
-                intervalSeconds = settings.instagramIntervalMinutes.toLong() * 60,
-                todaySeconds = usage.instagramSeconds,
-                accessLocked = !(
-                    settings.emergencyActive || emergencyState.isActive
-                    ) && (
-                    pendingTask?.target == TaskTarget.INSTAGRAM ||
-                        cycle.instagramEntryCooldownUntil?.isAfter(now) != true
-                    ),
-                unlockedUntilLabel = cycle.instagramEntryCooldownUntil
-                    ?.takeIf { it.isAfter(now) }
-                    ?.atZone(ZoneId.systemDefault())
-                    ?.format(DateTimeFormatter.ofPattern("HH:mm")),
-            )
-        } else {
-            InstagramLimitUiState.Disabled
-        },
+        youtube = buildAppLimitState(
+            enabled = settings.youtubeGateEnabled,
+            intervalMinutes = settings.youtubeIntervalMinutes,
+            cycleUsedSeconds = cycle.youtubeUsedSeconds,
+            todaySeconds = usage.youtubeSeconds,
+            cooldownUntil = cycle.youtubeEntryCooldownUntil,
+            target = TaskTarget.YOUTUBE,
+            pendingTask = pendingTask,
+            bypassActive = settings.emergencyActive || emergencyState.isActive,
+            now = now,
+        ),
+        instagram = buildAppLimitState(
+            enabled = settings.instagramGateEnabled,
+            intervalMinutes = settings.instagramIntervalMinutes,
+            cycleUsedSeconds = cycle.instagramUsedSeconds,
+            todaySeconds = usage.instagramSeconds,
+            cooldownUntil = cycle.instagramEntryCooldownUntil,
+            target = TaskTarget.INSTAGRAM,
+            pendingTask = pendingTask,
+            bypassActive = settings.emergencyActive || emergencyState.isActive,
+            now = now,
+        ),
+        pinterest = buildAppLimitState(
+            enabled = settings.pinterestGateEnabled,
+            intervalMinutes = settings.pinterestIntervalMinutes,
+            cycleUsedSeconds = cycle.pinterestUsedSeconds,
+            todaySeconds = usage.pinterestSeconds,
+            cooldownUntil = cycle.pinterestEntryCooldownUntil,
+            target = TaskTarget.PINTEREST,
+            pendingTask = pendingTask,
+            bypassActive = settings.emergencyActive || emergencyState.isActive,
+            now = now,
+        ),
+        chrome = buildAppLimitState(
+            enabled = settings.chromeGateEnabled,
+            intervalMinutes = settings.chromeIntervalMinutes,
+            cycleUsedSeconds = cycle.chromeUsedSeconds,
+            todaySeconds = usage.chromeSeconds,
+            cooldownUntil = cycle.chromeEntryCooldownUntil,
+            target = TaskTarget.CHROME,
+            pendingTask = pendingTask,
+            bypassActive = settings.emergencyActive || emergencyState.isActive,
+            now = now,
+        ),
         daily = when {
             !settings.dailyLimitEnabled -> DailyLimitUiState.Disabled
             !access.usageAccessGranted -> DailyLimitUiState.Unavailable
@@ -895,6 +926,33 @@ private fun buildDashboardState(
             )
         },
     )
+}
+
+private fun buildAppLimitState(
+    enabled: Boolean,
+    intervalMinutes: Int,
+    cycleUsedSeconds: Long,
+    todaySeconds: Long,
+    cooldownUntil: Instant?,
+    target: TaskTarget,
+    pendingTask: PendingTask?,
+    bypassActive: Boolean,
+    now: Instant,
+): AppLimitUiState = if (enabled) {
+    AppLimitUiState.Enabled(
+        cycleUsedSeconds = cycleUsedSeconds,
+        intervalSeconds = intervalMinutes.coerceAtLeast(1).toLong() * 60,
+        todaySeconds = todaySeconds,
+        accessLocked = !bypassActive && (
+            pendingTask?.target == target || cooldownUntil?.isAfter(now) != true
+            ),
+        unlockedUntilLabel = cooldownUntil
+            ?.takeIf { it.isAfter(now) }
+            ?.atZone(ZoneId.systemDefault())
+            ?.format(DateTimeFormatter.ofPattern("HH:mm")),
+    )
+} else {
+    AppLimitUiState.Disabled
 }
 
 private fun buildSettingsState(
@@ -982,7 +1040,13 @@ private fun buildTaskSettingsState(
         decayBreakMinutes = settings.difficultyDecayBreakMinutes,
         enabledTypes = settings.enabledTaskTypes,
         presets = presets,
-        instagramEnabled = settings.instagramGateEnabled,
+        enabledTargets = buildSet {
+            if (settings.shortsGateEnabled) add(TaskTarget.YOUTUBE_SHORTS)
+            if (settings.youtubeGateEnabled) add(TaskTarget.YOUTUBE)
+            if (settings.instagramGateEnabled) add(TaskTarget.INSTAGRAM)
+            if (settings.pinterestGateEnabled) add(TaskTarget.PINTEREST)
+            if (settings.chromeGateEnabled) add(TaskTarget.CHROME)
+        },
         learningCourses = courses
             .filter { it.status == CourseStatus.READY || it.status == CourseStatus.ACTIVE }
             .map { LearningCourseChoiceUi(it.id, it.title) },
@@ -1031,7 +1095,7 @@ private fun EmergencyEvent.toHistoryItem(): EmergencyHistoryItemUi {
         youtubeMinutesDuring = youtubeSecondsDuring.coerceAtLeast(0) / 60,
         sourceLabel = when (activationSource) {
             EmergencyActivationSource.DASHBOARD -> "Экран «Сегодня»"
-            EmergencyActivationSource.TASK_GATE -> "Задание Shorts"
+            EmergencyActivationSource.TASK_GATE -> "Задание ограничения"
             EmergencyActivationSource.DAILY_LIMIT -> "Дневной лимит"
             EmergencyActivationSource.FOCUS_MODE -> "Режим «Не отвлекаться»"
         },
@@ -1055,7 +1119,10 @@ private suspend fun Context.openTarget(
 ) {
     val packageName = when (target) {
         TaskTarget.YOUTUBE_SHORTS -> YOUTUBE_PACKAGE_NAME
+        TaskTarget.YOUTUBE -> YOUTUBE_PACKAGE_NAME
         TaskTarget.INSTAGRAM -> INSTAGRAM_PACKAGE_NAME
+        TaskTarget.PINTEREST -> FocusAppCatalog.PINTEREST
+        TaskTarget.CHROME -> FocusAppCatalog.CHROME
     }
     val intent = packageManager.getLaunchIntentForPackage(packageName)
         ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -1068,6 +1135,14 @@ private suspend fun Context.openTarget(
     } catch (_: ActivityNotFoundException) {
         onUnavailable()
     }
+}
+
+private fun TaskTarget.appLabel(): String = when (this) {
+    TaskTarget.YOUTUBE_SHORTS -> "YouTube Shorts"
+    TaskTarget.YOUTUBE -> "YouTube"
+    TaskTarget.INSTAGRAM -> "Instagram"
+    TaskTarget.PINTEREST -> "Pinterest"
+    TaskTarget.CHROME -> "Chrome"
 }
 
 @Composable

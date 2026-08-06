@@ -347,6 +347,45 @@ abstract class TaskGrantDao {
         updatedAtEpochMillis: Long,
     ): Int
 
+    @Query(
+        "UPDATE gate_cycles SET youtube_used_seconds = 0, pending_task_id = NULL, " +
+            "youtube_entry_cooldown_until_epoch_millis = :entryCooldownUntilEpochMillis, " +
+            "updated_at_epoch_millis = :updatedAtEpochMillis " +
+            "WHERE id = :cycleId AND pending_task_id = :taskId",
+    )
+    protected abstract suspend fun resetYoutubeAppCycle(
+        cycleId: String,
+        taskId: String,
+        entryCooldownUntilEpochMillis: Long,
+        updatedAtEpochMillis: Long,
+    ): Int
+
+    @Query(
+        "UPDATE gate_cycles SET pinterest_used_seconds = 0, pending_task_id = NULL, " +
+            "pinterest_entry_cooldown_until_epoch_millis = :entryCooldownUntilEpochMillis, " +
+            "updated_at_epoch_millis = :updatedAtEpochMillis " +
+            "WHERE id = :cycleId AND pending_task_id = :taskId",
+    )
+    protected abstract suspend fun resetPinterestCycle(
+        cycleId: String,
+        taskId: String,
+        entryCooldownUntilEpochMillis: Long,
+        updatedAtEpochMillis: Long,
+    ): Int
+
+    @Query(
+        "UPDATE gate_cycles SET chrome_used_seconds = 0, pending_task_id = NULL, " +
+            "chrome_entry_cooldown_until_epoch_millis = :entryCooldownUntilEpochMillis, " +
+            "updated_at_epoch_millis = :updatedAtEpochMillis " +
+            "WHERE id = :cycleId AND pending_task_id = :taskId",
+    )
+    protected abstract suspend fun resetChromeCycle(
+        cycleId: String,
+        taskId: String,
+        entryCooldownUntilEpochMillis: Long,
+        updatedAtEpochMillis: Long,
+    ): Int
+
     @Query("DELETE FROM pending_tasks WHERE id = :taskId AND solved = 1")
     protected abstract suspend fun deleteSolved(taskId: String): Int
 
@@ -366,15 +405,36 @@ abstract class TaskGrantDao {
         check(incrementTasksSolved(localDate, updatedAtEpochMillis) == 1) {
             "Task grant lost the daily aggregate"
         }
-        val cycleUpdated = if (task.target == "INSTAGRAM") {
-            resetInstagramCycle(
+        val cycleUpdated = when (task.target) {
+            "INSTAGRAM" -> resetInstagramCycle(
                 cycleId = cycleId,
                 taskId = taskId,
                 entryCooldownUntilEpochMillis = entryCooldownUntilEpochMillis,
                 updatedAtEpochMillis = updatedAtEpochMillis,
             )
-        } else {
-            resetYoutubeCycle(
+
+            "YOUTUBE" -> resetYoutubeAppCycle(
+                cycleId = cycleId,
+                taskId = taskId,
+                entryCooldownUntilEpochMillis = entryCooldownUntilEpochMillis,
+                updatedAtEpochMillis = updatedAtEpochMillis,
+            )
+
+            "PINTEREST" -> resetPinterestCycle(
+                cycleId = cycleId,
+                taskId = taskId,
+                entryCooldownUntilEpochMillis = entryCooldownUntilEpochMillis,
+                updatedAtEpochMillis = updatedAtEpochMillis,
+            )
+
+            "CHROME" -> resetChromeCycle(
+                cycleId = cycleId,
+                taskId = taskId,
+                entryCooldownUntilEpochMillis = entryCooldownUntilEpochMillis,
+                updatedAtEpochMillis = updatedAtEpochMillis,
+            )
+
+            else -> resetYoutubeCycle(
                 cycleId = cycleId,
                 taskId = taskId,
                 entryCooldownUntilEpochMillis = entryCooldownUntilEpochMillis,

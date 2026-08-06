@@ -60,7 +60,7 @@ internal class AccessibilityAdapterController(
             // Content events from keyboards, notifications and other accessibility services do
             // not mean that the foreground target was left. Only a window-level transition is a
             // reliable boundary; treating every foreign content event as an exit caused silent
-            // undercounting while YouTube or Instagram was still visible.
+            // undercounting while a monitored app was still visible.
             if (eventType in FOREGROUND_BOUNDARY_EVENT_TYPES) {
                 coalescer.cancelAndReset()
                 // Focus mode needs the actual foreground package, while content noise from
@@ -112,7 +112,7 @@ internal class AccessibilityAdapterController(
     }
 
     override suspend fun capture(event: AccessibilityWindowEvent): WindowSnapshot? {
-        if (!connected || event.packageName !in TARGET_PACKAGE_NAMES) return null
+        if (!connected || event.packageName != YOUTUBE_PACKAGE_NAME) return null
         val snapshot = try {
             snapshotCapture(event)
         } catch (cancellation: CancellationException) {
@@ -144,7 +144,15 @@ internal class AccessibilityAdapterController(
     companion object {
         const val YOUTUBE_PACKAGE_NAME = "com.google.android.youtube"
         const val INSTAGRAM_PACKAGE_NAME = "com.instagram.android"
-        val TARGET_PACKAGE_NAMES = setOf(YOUTUBE_PACKAGE_NAME, INSTAGRAM_PACKAGE_NAME)
+        const val PINTEREST_PACKAGE_NAME = "com.pinterest"
+        const val CHROME_PACKAGE_NAME = "com.android.chrome"
+        val APP_GATE_PACKAGE_NAMES = setOf(
+            YOUTUBE_PACKAGE_NAME,
+            INSTAGRAM_PACKAGE_NAME,
+            PINTEREST_PACKAGE_NAME,
+            CHROME_PACKAGE_NAME,
+        )
+        val TARGET_PACKAGE_NAMES = APP_GATE_PACKAGE_NAMES
 
         // Values are stable Android AccessibilityEvent constants and kept Android-free for unit tests.
         const val TYPE_WINDOW_STATE_CHANGED = 32

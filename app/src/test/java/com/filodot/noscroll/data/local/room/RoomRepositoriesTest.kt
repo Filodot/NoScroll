@@ -323,6 +323,69 @@ class RoomRepositoriesTest {
     }
 
     @Test
+    fun wholeAppGrantsResetOnlyTheirOwnIntervalAndCooldown() = runBlocking {
+        val date = LocalDate.of(2026, 7, 14)
+        val now = Instant.parse("2026-07-14T05:00:00Z")
+        database.dailyUsageDao().upsert(dailyUsage(date, now).toEntity())
+
+        listOf(TaskTarget.YOUTUBE, TaskTarget.PINTEREST, TaskTarget.CHROME)
+            .forEachIndexed { index, target ->
+                val task = pendingTask("app-task-$target", now).copy(target = target)
+                val cooldownUntil = now.plusSeconds(600L + index)
+                database.pendingTaskDao().upsert(task.toEntity())
+                database.gateCycleDao().upsert(
+                    gateCycle(date, now).copy(
+                        usedSeconds = 11,
+                        instagramUsedSeconds = 22,
+                        youtubeUsedSeconds = 33,
+                        pinterestUsedSeconds = 44,
+                        chromeUsedSeconds = 55,
+                        pendingTaskId = task.id,
+                    ).toEntity(),
+                )
+
+                assertTrue(
+                    RoomTaskGrantTransaction(database.taskGrantDao()).grant(
+                        task.id,
+                        date,
+                        now,
+                        cooldownUntil,
+                    ),
+                )
+
+                val cycle = requireNotNull(
+                    database.gateCycleDao().get(GateCycle.CURRENT_GATE_CYCLE_ID),
+                ).toModel()
+                assertEquals(11L, cycle.usedSeconds)
+                assertEquals(22L, cycle.instagramUsedSeconds)
+                when (target) {
+                    TaskTarget.YOUTUBE -> {
+                        assertEquals(0L, cycle.youtubeUsedSeconds)
+                        assertEquals(cooldownUntil, cycle.youtubeEntryCooldownUntil)
+                        assertEquals(44L, cycle.pinterestUsedSeconds)
+                        assertEquals(55L, cycle.chromeUsedSeconds)
+                    }
+
+                    TaskTarget.PINTEREST -> {
+                        assertEquals(33L, cycle.youtubeUsedSeconds)
+                        assertEquals(0L, cycle.pinterestUsedSeconds)
+                        assertEquals(cooldownUntil, cycle.pinterestEntryCooldownUntil)
+                        assertEquals(55L, cycle.chromeUsedSeconds)
+                    }
+
+                    TaskTarget.CHROME -> {
+                        assertEquals(33L, cycle.youtubeUsedSeconds)
+                        assertEquals(44L, cycle.pinterestUsedSeconds)
+                        assertEquals(0L, cycle.chromeUsedSeconds)
+                        assertEquals(cooldownUntil, cycle.chromeEntryCooldownUntil)
+                    }
+
+                    else -> error("Unexpected target $target")
+                }
+            }
+    }
+
+    @Test
     fun customTaskPresetsRoundTripAndDelete() = runBlocking {
         val repository = RoomTaskPresetRepository(database.customTaskPresetDao(), scope)
         val preset = CustomTaskPreset(

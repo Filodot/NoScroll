@@ -30,4 +30,18 @@ class FocusModeTest {
             FocusAppCatalog.sanitize(setOf(FocusAppCatalog.INSTAGRAM, "unknown.package")),
         )
     }
+
+    @Test
+    fun `focus catalog exposes Pinterest and Chrome`() {
+        assertTrue(FocusAppCatalog.PINTEREST in FocusAppCatalog.supportedPackages)
+        assertTrue(FocusAppCatalog.CHROME in FocusAppCatalog.supportedPackages)
+        assertEquals(
+            setOf("Pinterest", "Chrome"),
+            FocusAppCatalog.apps
+                .filter {
+                    it.packageName in setOf(FocusAppCatalog.PINTEREST, FocusAppCatalog.CHROME)
+                }
+                .mapTo(linkedSetOf()) { it.label },
+        )
+    }
 }

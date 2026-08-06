@@ -45,7 +45,7 @@ abstract class NoScrollDatabase : RoomDatabase() {
 
     companion object {
         const val DATABASE_NAME = "noscroll.db"
-        const val VERSION = 9
+        const val VERSION = 10
 
         val MIGRATION_1_2 = Migration(1, 2) { database ->
             database.execSQL(
@@ -157,6 +157,33 @@ abstract class NoScrollDatabase : RoomDatabase() {
             )
         }
 
+        val MIGRATION_9_10 = Migration(9, 10) { database ->
+            database.execSQL(
+                "ALTER TABLE daily_usage ADD COLUMN pinterest_seconds INTEGER NOT NULL DEFAULT 0",
+            )
+            database.execSQL(
+                "ALTER TABLE daily_usage ADD COLUMN chrome_seconds INTEGER NOT NULL DEFAULT 0",
+            )
+            database.execSQL(
+                "ALTER TABLE gate_cycles ADD COLUMN youtube_used_seconds INTEGER NOT NULL DEFAULT 0",
+            )
+            database.execSQL(
+                "ALTER TABLE gate_cycles ADD COLUMN youtube_entry_cooldown_until_epoch_millis INTEGER",
+            )
+            database.execSQL(
+                "ALTER TABLE gate_cycles ADD COLUMN pinterest_used_seconds INTEGER NOT NULL DEFAULT 0",
+            )
+            database.execSQL(
+                "ALTER TABLE gate_cycles ADD COLUMN pinterest_entry_cooldown_until_epoch_millis INTEGER",
+            )
+            database.execSQL(
+                "ALTER TABLE gate_cycles ADD COLUMN chrome_used_seconds INTEGER NOT NULL DEFAULT 0",
+            )
+            database.execSQL(
+                "ALTER TABLE gate_cycles ADD COLUMN chrome_entry_cooldown_until_epoch_millis INTEGER",
+            )
+        }
+
         val ALL_MIGRATIONS = arrayOf(
             MIGRATION_1_2,
             MIGRATION_2_3,
@@ -166,6 +193,7 @@ abstract class NoScrollDatabase : RoomDatabase() {
             MIGRATION_6_7,
             MIGRATION_7_8,
             MIGRATION_8_9,
+            MIGRATION_9_10,
         )
 
         fun build(context: Context, name: String = DATABASE_NAME): NoScrollDatabase =

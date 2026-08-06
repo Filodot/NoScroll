@@ -43,6 +43,7 @@ import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
+import com.filodot.noscroll.core.model.TaskTarget
 
 @Composable
 fun DashboardScreen(
@@ -82,8 +83,38 @@ fun DashboardScreen(
                     onAction = onAction,
                 )
                 Spacer(Modifier.height(16.dp))
-                InstagramCard(
-                    instagram = state.instagram,
+                AppIntervalCard(
+                    label = "Весь YouTube",
+                    detail = "Учитывается всё время в YouTube, включая Shorts",
+                    target = TaskTarget.YOUTUBE,
+                    app = state.youtube,
+                    paused = state.emergency.active,
+                    onAction = onAction,
+                )
+                Spacer(Modifier.height(16.dp))
+                AppIntervalCard(
+                    label = "Instagram",
+                    detail = "Учитывается всё время в приложении, включая ленту и сообщения",
+                    target = TaskTarget.INSTAGRAM,
+                    app = state.instagram,
+                    paused = state.emergency.active,
+                    onAction = onAction,
+                )
+                Spacer(Modifier.height(16.dp))
+                AppIntervalCard(
+                    label = "Pinterest",
+                    detail = "Учитывается всё время в приложении Pinterest",
+                    target = TaskTarget.PINTEREST,
+                    app = state.pinterest,
+                    paused = state.emergency.active,
+                    onAction = onAction,
+                )
+                Spacer(Modifier.height(16.dp))
+                AppIntervalCard(
+                    label = "Chrome",
+                    detail = "Учитывается всё время в Chrome, независимо от сайта",
+                    target = TaskTarget.CHROME,
+                    app = state.chrome,
                     paused = state.emergency.active,
                     onAction = onAction,
                 )
@@ -260,43 +291,46 @@ private fun FocusModeCard(
 }
 
 @Composable
-private fun InstagramCard(
-    instagram: InstagramLimitUiState,
+private fun AppIntervalCard(
+    label: String,
+    detail: String,
+    target: TaskTarget,
+    app: AppLimitUiState,
     paused: Boolean,
     onAction: (DashboardAction) -> Unit,
 ) {
-    DashboardCard(title = "Instagram") {
-        when (instagram) {
-            InstagramLimitUiState.Disabled -> Text(
-                text = "Ограничение Instagram выключено",
+    DashboardCard(title = label) {
+        when (app) {
+            AppLimitUiState.Disabled -> Text(
+                text = "Ограничение $label выключено",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyLarge,
             )
 
-            is InstagramLimitUiState.Enabled -> {
-                if (instagram.accessLocked && !paused) {
-                    Text("Instagram заблокирован", style = MaterialTheme.typography.titleLarge)
+            is AppLimitUiState.Enabled -> {
+                if (app.accessLocked && !paused) {
+                    Text("$label заблокирован", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(8.dp))
                     Text(
                         "Выполните входное задание для следующих " +
-                            "${wholeMinutes(instagram.intervalSeconds)} минут",
+                            "${wholeMinutes(app.intervalSeconds)} минут",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(16.dp))
                     Button(
-                        onClick = { onAction(DashboardAction.OpenInstagramChallenge) },
+                        onClick = { onAction(DashboardAction.OpenAppChallenge(target)) },
                         modifier = Modifier.heightIn(min = 48.dp),
                     ) { Text("Открыть задание") }
                     return@DashboardCard
                 }
-                val progress = progress(instagram.cycleUsedSeconds, instagram.intervalSeconds)
+                val progress = progress(app.cycleUsedSeconds, app.intervalSeconds)
                 if (paused) {
                     PausedLabel()
                     Spacer(Modifier.height(12.dp))
                 }
                 ContextualProgress(
                     progress = progress,
-                    description = "Интервал Instagram: использовано " +
+                    description = "Интервал $label: использовано " +
                         "${formatCountdown(progress.usedSeconds)} из " +
                         formatCountdown(progress.limitSeconds),
                     paused = paused,
@@ -306,18 +340,18 @@ private fun InstagramCard(
                     "До паузы: ${formatCountdown(progress.remainingSeconds)}",
                     style = MaterialTheme.typography.titleLarge,
                 )
-                instagram.unlockedUntilLabel?.let { label ->
+                app.unlockedUntilLabel?.let { untilLabel ->
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "Вход разрешён до $label",
+                        "Вход разрешён до $untilLabel",
                         color = MaterialTheme.colorScheme.primary,
                         style = MaterialTheme.typography.labelLarge,
                     )
                 }
                 Spacer(Modifier.height(8.dp))
-                Text("Instagram сегодня: ${wholeMinutes(instagram.todaySeconds)} мин")
+                Text("Сегодня: ${wholeMinutes(app.todaySeconds)} мин")
                 Text(
-                    "Учитывается всё время в приложении, включая ленту и сообщения",
+                    detail,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                 )

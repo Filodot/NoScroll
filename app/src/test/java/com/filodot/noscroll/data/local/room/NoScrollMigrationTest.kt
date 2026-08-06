@@ -28,7 +28,7 @@ class NoScrollMigrationTest {
     }
 
     @Test
-    fun migrationOneToNinePreservesUsageAndInitializesNewColumns() = runBlocking {
+    fun migrationOneToTenPreservesUsageAndInitializesNewColumns() = runBlocking {
         createVersionOneDatabase()
 
         val database = Room.databaseBuilder(context, NoScrollDatabase::class.java, databaseName)
@@ -41,6 +41,8 @@ class NoScrollMigrationTest {
         assertEquals(1_234L, migrated.youtubeSeconds)
         assertEquals(456L, migrated.shortsSeconds)
         assertEquals(0L, migrated.instagramSeconds)
+        assertEquals(0L, migrated.pinterestSeconds)
+        assertEquals(0L, migrated.chromeSeconds)
         assertEquals(0L, migrated.emergencyYoutubeSeconds)
         assertEquals(null, database.gateCycleDao().get("current"))
         assertEquals(null, database.learningDao().getCourse("missing"))
@@ -48,7 +50,7 @@ class NoScrollMigrationTest {
     }
 
     @Test
-    fun migrationTwoToNinePreservesPendingGateAndAddsAllDefaults() = runBlocking {
+    fun migrationTwoToTenPreservesPendingGateAndAddsAllDefaults() = runBlocking {
         createVersionTwoDatabase()
 
         val database = Room.databaseBuilder(context, NoScrollDatabase::class.java, databaseName)
@@ -60,6 +62,7 @@ class NoScrollMigrationTest {
                 NoScrollDatabase.MIGRATION_6_7,
                 NoScrollDatabase.MIGRATION_7_8,
                 NoScrollDatabase.MIGRATION_8_9,
+                NoScrollDatabase.MIGRATION_9_10,
             )
             .allowMainThreadQueries()
             .build()
@@ -72,6 +75,9 @@ class NoScrollMigrationTest {
         assertEquals(null, cycle.lastIntervalBlockAt)
         assertEquals(null, cycle.entryCooldownUntil)
         assertEquals(0L, cycle.instagramUsedSeconds)
+        assertEquals(0L, cycle.youtubeUsedSeconds)
+        assertEquals(0L, cycle.pinterestUsedSeconds)
+        assertEquals(0L, cycle.chromeUsedSeconds)
         assertEquals(0L, cycle.difficultyLoadSeconds)
         assertEquals(com.filodot.noscroll.core.model.TaskDifficulty.MEDIUM, task.difficulty)
         assertEquals(com.filodot.noscroll.core.model.TaskTrigger.INTERVAL, task.trigger)
@@ -82,7 +88,7 @@ class NoScrollMigrationTest {
     }
 
     @Test
-    fun migrationThreeToNinePreservesVersionThreeState() = runBlocking {
+    fun migrationThreeToTenPreservesVersionThreeState() = runBlocking {
         createVersionThreeDatabase()
 
         val database = Room.databaseBuilder(context, NoScrollDatabase::class.java, databaseName)
@@ -93,6 +99,7 @@ class NoScrollMigrationTest {
                 NoScrollDatabase.MIGRATION_6_7,
                 NoScrollDatabase.MIGRATION_7_8,
                 NoScrollDatabase.MIGRATION_8_9,
+                NoScrollDatabase.MIGRATION_9_10,
             )
             .allowMainThreadQueries()
             .build()
