@@ -14,8 +14,8 @@ android {
         applicationId = "com.filodot.noscroll"
         minSdk = 26
         targetSdk = 37
-        versionCode = 13
-        versionName = "0.9.0"
+        versionCode = 14
+        versionName = "0.9.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

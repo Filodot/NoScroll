@@ -58,14 +58,18 @@ class TaskDifficultyPolicy {
         if (now.isBefore(previous)) return normalized.copy(updatedAt = now)
 
         val elapsedSeconds = Duration.between(previous, now).seconds.coerceAtLeast(0)
-        if (elapsedSeconds == 0L) return normalized.copy(updatedAt = now)
-
         val activeSeconds = if (shortsActive) {
-            (observedActiveSeconds ?: elapsedSeconds).coerceIn(0, elapsedSeconds)
+            // MonitoringCoordinator measures active time with elapsedRealtime. Do not clamp that
+            // trusted monotonic sample to wall-clock seconds: Duration.seconds rounds down and a
+            // heartbeat arriving at ~999 ms would otherwise silently lose one watched second.
+            (observedActiveSeconds ?: elapsedSeconds).coerceAtLeast(0)
         } else {
             0
         }
-        val breakSeconds = elapsedSeconds - activeSeconds
+        val breakSeconds = (elapsedSeconds - activeSeconds).coerceAtLeast(0)
+        if (activeSeconds == 0L && breakSeconds == 0L) {
+            return normalized.copy(updatedAt = now)
+        }
         val recovered = recover(normalized, breakSeconds, config)
         return if (activeSeconds > 0) {
             recovered.copy(

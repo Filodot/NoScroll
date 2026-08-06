@@ -48,6 +48,49 @@ class TaskDifficultyPolicyTest {
     }
 
     @Test
+    fun `monotonic active second survives subsecond wall clock heartbeat`() {
+        val updated = policy.update(
+            state = TaskDifficultyState(loadSeconds = 59L, updatedAt = now),
+            now = now.plusMillis(900),
+            shortsActive = true,
+            config = config,
+            observedActiveSeconds = 1,
+        )
+
+        assertEquals(60L, updated.loadSeconds)
+        assertEquals(now.plusMillis(900), updated.updatedAt)
+    }
+
+    @Test
+    fun `repeated early heartbeats accumulate every observed second`() {
+        var state = TaskDifficultyState(updatedAt = now)
+        repeat(60) { index ->
+            state = policy.update(
+                state = state,
+                now = now.plusMillis((index + 1L) * 900L),
+                shortsActive = true,
+                config = config,
+                observedActiveSeconds = 1,
+            )
+        }
+
+        assertEquals(60L, state.loadSeconds)
+    }
+
+    @Test
+    fun `offline recovery is applied before a monotonic active sample`() {
+        val updated = policy.update(
+            state = TaskDifficultyState(loadSeconds = 60L, updatedAt = now),
+            now = now.plusSeconds(300),
+            shortsActive = true,
+            config = config,
+            observedActiveSeconds = 1,
+        )
+
+        assertEquals(2L, updated.loadSeconds)
+    }
+
+    @Test
     fun `a full day away recovers accumulated load without periodic writes`() {
         val state = TaskDifficultyState(
             loadSeconds = 25 * 60L,
