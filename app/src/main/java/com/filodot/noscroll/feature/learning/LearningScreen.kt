@@ -19,6 +19,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -475,17 +476,35 @@ private fun CoursePane(
                 ) {
                     Text("Начать следующий урок")
                 }
-            } else if (content.course.status == CourseStatus.READY) {
+            }
+            if (content.course.status == CourseStatus.READY) {
                 if (state.generatingLesson) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                    Text("Создаём, перепроверяем и сохраняем урок для офлайн-доступа…")
+                    Text(
+                        "Создаём и проверяем пакет: ${state.generatedLessonCount} из " +
+                            "${state.lessonGenerationTarget}",
+                    )
                 } else {
+                    Text("Сколько добавить в офлайн-пул")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(1, 3, 5, 10).forEach { count ->
+                            FilterChip(
+                                selected = state.lessonBatchSize == count,
+                                onClick = { onAction(LearningAction.SetLessonBatchSize(count)) },
+                                label = { Text(count.toString()) },
+                            )
+                        }
+                    }
                     Button(
-                        onClick = { onAction(LearningAction.GenerateNextLesson) },
+                        onClick = { onAction(LearningAction.GenerateLessonBatch) },
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                     ) {
-                        Text("Подготовить следующий урок")
+                        Text("Подготовить ${state.lessonBatchSize} офлайн")
                     }
+                    Text(
+                        "После прохождения пул автоматически пополняется до 3 уроков.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             } else {
                 Text(

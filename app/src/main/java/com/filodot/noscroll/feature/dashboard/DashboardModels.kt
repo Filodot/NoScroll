@@ -42,6 +42,21 @@ data class EmergencyUiState(
     val activeSinceLabel: String? = null,
 )
 
+data class FocusAppUi(
+    val packageName: String,
+    val label: String,
+)
+
+data class FocusModeUiState(
+    val active: Boolean = false,
+    val endsAtLabel: String? = null,
+    val remainingMinutes: Long = 0,
+    val durationMinutes: Int = 30,
+    val selectedPackages: Set<String> = emptySet(),
+    val blockedAppLabels: List<String> = emptyList(),
+    val availableApps: List<FocusAppUi> = emptyList(),
+)
+
 enum class DashboardMonitoringState {
     RUNNING,
     STARTING,
@@ -68,6 +83,7 @@ data class DashboardUiState(
         todaySeconds = 0,
     ),
     val emergency: EmergencyUiState = EmergencyUiState(),
+    val focusMode: FocusModeUiState = FocusModeUiState(),
 ) {
     val protectionStatus: DashboardProtectionStatus
         get() = when {
@@ -83,7 +99,8 @@ data class DashboardUiState(
     val emergencyAvailable: Boolean
         get() = shorts !is ShortsLimitUiState.Disabled ||
             instagram !is InstagramLimitUiState.Disabled ||
-            daily !is DailyLimitUiState.Disabled
+            daily !is DailyLimitUiState.Disabled ||
+            focusMode.active
 
     val hasUsageAccessProblem: Boolean
         get() = accessibilityEnabled && monitoringState == DashboardMonitoringState.RUNNING &&
@@ -104,6 +121,11 @@ sealed interface DashboardAction {
     data object OpenDiagnostics : DashboardAction
     data object OpenChallenge : DashboardAction
     data object OpenInstagramChallenge : DashboardAction
+    data class StartFocusMode(
+        val durationMinutes: Int,
+        val packageNames: Set<String>,
+    ) : DashboardAction
+    data object OpenFocusEmergency : DashboardAction
     data class SetEmergencyEnabled(val enabled: Boolean) : DashboardAction
 }
 

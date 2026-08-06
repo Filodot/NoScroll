@@ -12,6 +12,7 @@ import com.filodot.noscroll.core.learning.code.CodeEvaluationStatus
 import com.filodot.noscroll.core.learning.code.CodeExerciseEvaluator
 import com.filodot.noscroll.core.learning.generation.CurriculumGenerationException
 import com.filodot.noscroll.core.learning.generation.CurriculumGenerator
+import com.filodot.noscroll.core.learning.generation.BufferedLessonGenerator
 import com.filodot.noscroll.core.learning.generation.LessonGenerationException
 import com.filodot.noscroll.core.learning.generation.LessonGenerator
 import com.filodot.noscroll.core.learning.importing.LearningMaterialGateway
@@ -98,6 +99,9 @@ data class LearningUiState(
     val planDirty: Boolean = false,
     val lastPlanProviderLabel: String? = null,
     val generatingLesson: Boolean = false,
+    val lessonBatchSize: Int = DEFAULT_LESSON_BATCH_SIZE,
+    val generatedLessonCount: Int = 0,
+    val lessonGenerationTarget: Int = 0,
     val checkingAnswer: Boolean = false,
     val deleteCourseConfirmation: Boolean = false,
     val deletingCourse: Boolean = false,
@@ -145,6 +149,8 @@ sealed interface LearningAction {
     data object AddPlanNode : LearningAction
     data object ConfirmPlan : LearningAction
     data object GenerateNextLesson : LearningAction
+    data class SetLessonBatchSize(val count: Int) : LearningAction
+    data object GenerateLessonBatch : LearningAction
     data object RequestDeleteCourse : LearningAction
     data object CancelDeleteCourse : LearningAction
     data object ConfirmDeleteCourse : LearningAction
@@ -309,7 +315,14 @@ class LearningStateHolder(
             is LearningAction.DeletePlanNode -> scope.launch { deletePlanNode(action.nodeId) }
             LearningAction.AddPlanNode -> scope.launch { addPlanNode() }
             LearningAction.ConfirmPlan -> scope.launch { confirmPlan() }
-            LearningAction.GenerateNextLesson -> scope.launch { generateNextLesson() }
+            LearningAction.GenerateNextLesson -> scope.launch { generateLessons(1) }
+            is LearningAction.SetLessonBatchSize -> mutableState.update {
+                it.copy(lessonBatchSize = action.count.coerceIn(1, MAX_LESSON_BATCH_SIZE))
+            }
+
+            LearningAction.GenerateLessonBatch -> scope.launch {
+                generateLessons(mutableState.value.lessonBatchSize)
+            }
             LearningAction.RequestDeleteCourse -> mutableState.update {
                 it.copy(deleteCourseConfirmation = true, message = null)
             }
@@ -628,59 +641,117 @@ class LearningStateHolder(
         }
     }
 
-    private suspend fun generateNextLesson() {
+    private suspend fun generateLessons(
+        requestedCount: Int,
+        automatic: Boolean = false,
+        requestedCourseId: String? = mutableState.value.selectedCourse?.course?.id,
+    ) {
         val generator = lessonGenerator
-        val content = mutableState.value.selectedCourse
+        val content = requestedCourseId?.let { repository.getCourseContent(it) }
         if (generator == null || content == null) {
-            mutableState.update { it.copy(message = "Генератор уроков пока недоступен") }
+            if (!automatic) {
+                mutableState.update { it.copy(message = "Генератор уроков пока недоступен") }
+            }
             return
         }
         if (content.course.status != CourseStatus.READY) {
-            mutableState.update { it.copy(message = "Сначала подтвердите план курса") }
-            return
-        }
-        if (mutableState.value.readyLessons > 0) {
-            mutableState.update { it.copy(message = "Следующий урок уже готов офлайн") }
+            if (!automatic) {
+                mutableState.update { it.copy(message = "Сначала подтвердите план курса") }
+            }
             return
         }
         if (mutableState.value.generatingLesson) return
         if (mutableState.value.aiProviders.none { it.enabled && it.hasApiKey }) {
-            mutableState.update { it.copy(message = "Добавьте API-ключ AI-провайдера") }
+            if (!automatic) {
+                mutableState.update { it.copy(message = "Добавьте API-ключ AI-провайдера") }
+            }
             return
         }
-        mutableState.update { it.copy(generatingLesson = true, message = null) }
+        val existingLessons = repository.getValidatedLessons(content.course.id)
+        val targetCount = requestedCount
+            .coerceIn(1, MAX_LESSON_BATCH_SIZE)
+            .coerceAtMost((MAX_OFFLINE_LESSONS - existingLessons.size).coerceAtLeast(0))
+        if (targetCount == 0) {
+            if (!automatic) {
+                mutableState.update {
+                    it.copy(message = "Офлайн-пул уже заполнен: максимум $MAX_OFFLINE_LESSONS уроков")
+                }
+            }
+            return
+        }
+        mutableState.update {
+            it.copy(
+                generatingLesson = true,
+                generatedLessonCount = 0,
+                lessonGenerationTarget = targetCount,
+                message = if (automatic) "Автоматически пополняем офлайн-пул…" else null,
+            )
+        }
+        var generatedCount = 0
+        var lastGenerationLabel: String? = null
+        var failureMessage: String? = null
         try {
-            val lesson = generator.generate(content, repository.getMastery(content.course.id))
-            repository.saveLesson(lesson)
-            openCourse(content.course.id)
-            val generation = lesson.activities.firstOrNull()?.generation
-            mutableState.update {
-                it.copy(
-                    generatingLesson = false,
-                    message = if (generation == null) {
-                        "Следующий урок готов офлайн"
-                    } else {
-                        "Урок готов: ${generation.providerId} · ${generation.modelId}"
-                    },
-                )
+            val mastery = repository.getMastery(content.course.id)
+            val reservedConceptIds = existingLessons
+                .flatMapTo(mutableSetOf()) { lesson ->
+                    lesson.activities.flatMap { it.conceptIds }
+                }
+            repeat(targetCount) {
+                val lesson = if (generator is BufferedLessonGenerator) {
+                    generator.generateNext(content, mastery, reservedConceptIds)
+                } else {
+                    generator.generate(content, mastery)
+                }
+                repository.saveLesson(lesson)
+                lesson.activities.flatMapTo(reservedConceptIds) { it.conceptIds }
+                generatedCount += 1
+                lesson.activities.firstOrNull()?.generation?.let { generation ->
+                    lastGenerationLabel = "${generation.providerId} · ${generation.modelId}"
+                }
+                mutableState.update { it.copy(generatedLessonCount = generatedCount) }
             }
         } catch (error: LessonGenerationException) {
-            mutableState.update {
-                it.copy(
-                    generatingLesson = false,
-                    message = error.issues.firstOrNull()
-                        ?: error.message
-                        ?: "Не удалось создать качественный урок",
-                )
-            }
+            failureMessage = error.issues.firstOrNull()
+                ?: error.message
+                ?: "Не удалось создать качественный урок"
         } catch (error: Exception) {
-            if (error is CancellationException) throw error
-            mutableState.update {
-                it.copy(
-                    generatingLesson = false,
-                    message = error.message?.take(400) ?: "Не удалось создать урок",
-                )
+            if (error is CancellationException) {
+                mutableState.update {
+                    it.copy(generatingLesson = false, lessonGenerationTarget = 0)
+                }
+                throw error
             }
+            failureMessage = error.message?.take(400) ?: "Не удалось создать урок"
+        }
+        val readyCount = repository.observeValidatedLessonCount(content.course.id).first()
+        val latestContent = repository.getCourseContent(content.course.id)
+        mutableState.update { state ->
+            state.copy(
+                generatingLesson = false,
+                generatedLessonCount = generatedCount,
+                lessonGenerationTarget = 0,
+                selectedCourse = if (state.selectedCourse?.course?.id == content.course.id) {
+                    latestContent
+                } else {
+                    state.selectedCourse
+                },
+                readyLessons = if (state.selectedCourse?.course?.id == content.course.id) {
+                    readyCount
+                } else {
+                    state.readyLessons
+                },
+                message = when {
+                    generatedCount == targetCount && automatic ->
+                        "Офлайн-пул автоматически пополнен: готово $readyCount"
+                    generatedCount == targetCount && lastGenerationLabel != null ->
+                        "Подготовлено $generatedCount · $lastGenerationLabel"
+                    generatedCount == targetCount -> "Подготовлено уроков: $generatedCount"
+                    generatedCount > 0 ->
+                        "Подготовлено $generatedCount из $targetCount. ${failureMessage.orEmpty()}"
+                    automatic -> "Урок пройден. Автопополнение не удалось; повторим позже."
+                    else -> failureMessage ?: "Не удалось создать уроки"
+                },
+            )
         }
     }
 
@@ -1117,6 +1188,7 @@ class LearningStateHolder(
                 message = null,
             )
         }
+        requestAutoRefill(courseId)
     }
 
     private suspend fun replaceSuspicious() {
@@ -1143,6 +1215,7 @@ class LearningStateHolder(
                     message = "Подозрительные задания убраны. Прогресс не изменён.",
                 )
             }
+            requestAutoRefill(courseId)
             return
         }
         mutableState.update {
@@ -1155,6 +1228,15 @@ class LearningStateHolder(
                 ),
                 lesson.activities[replacementIndex],
             )
+        }
+    }
+
+    private fun requestAutoRefill(courseId: String) {
+        if (mutableState.value.generatingLesson) return
+        scope.launch {
+            val readyCount = repository.observeValidatedLessonCount(courseId).first()
+            val missing = (AUTO_REFILL_TARGET - readyCount).coerceAtLeast(0)
+            if (missing > 0) generateLessons(missing, automatic = true, requestedCourseId = courseId)
         }
     }
 
@@ -1232,6 +1314,10 @@ private const val MAX_PLAN_TITLE_LENGTH = 100
 private const val MAX_PLAN_DESCRIPTION_LENGTH = 500
 private const val PLAN_SAVE_DEBOUNCE_MILLIS = 500L
 private const val MAX_COMPLETED_LESSONS_SKIPPED_ON_RESUME = 25
+private const val DEFAULT_LESSON_BATCH_SIZE = 3
+private const val MAX_LESSON_BATCH_SIZE = 10
+private const val MAX_OFFLINE_LESSONS = 20
+private const val AUTO_REFILL_TARGET = 3
 
 internal fun AiProviderId.displayName(): String = when (this) {
     AiProviderId.GEMINI -> "Google Gemini"

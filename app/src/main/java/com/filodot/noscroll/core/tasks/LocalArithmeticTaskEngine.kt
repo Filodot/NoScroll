@@ -200,6 +200,22 @@ class LocalArithmeticTaskEngine(
                     profile.multiplyRange.last + 1,
                 ),
             )
+
+            ArithmeticOperation.DIVIDE -> {
+                val divisor = random.nextInt(
+                    profile.divideDivisorRange.first,
+                    profile.divideDivisorRange.last + 1,
+                )
+                val quotient = random.nextInt(
+                    profile.divideQuotientRange.first,
+                    profile.divideQuotientRange.last + 1,
+                )
+                ArithmeticExample(
+                    operation = ArithmeticOperation.DIVIDE,
+                    leftOperand = divisor * quotient,
+                    rightOperand = divisor,
+                )
+            }
         }
     }
 
@@ -239,6 +255,17 @@ class LocalArithmeticTaskEngine(
                         }
                     }
                 }
+
+
+                ArithmeticOperation.DIVIDE -> {
+                    for (divisor in profile.divideDivisorRange) {
+                        for (quotient in profile.divideQuotientRange) {
+                            ArithmeticExample(operation, divisor * quotient, divisor)
+                                .takeIf { it !in recent }
+                                ?.let { return it }
+                        }
+                    }
+                }
             }
         }
         error("Arithmetic task space is unexpectedly exhausted")
@@ -249,6 +276,8 @@ private data class ArithmeticDifficultyProfile(
     val addRange: IntRange,
     val subtractRange: IntRange,
     val multiplyRange: IntRange,
+    val divideDivisorRange: IntRange,
+    val divideQuotientRange: IntRange,
 ) {
     companion object {
         fun forDifficulty(difficulty: TaskDifficulty): ArithmeticDifficultyProfile =
@@ -257,18 +286,24 @@ private data class ArithmeticDifficultyProfile(
                     addRange = 1..20,
                     subtractRange = 1..20,
                     multiplyRange = 2..5,
+                    divideDivisorRange = 2..5,
+                    divideQuotientRange = 2..6,
                 )
 
                 TaskDifficulty.MEDIUM -> ArithmeticDifficultyProfile(
                     addRange = 10..99,
                     subtractRange = 10..99,
-                    multiplyRange = 2..9,
+                    multiplyRange = 4..15,
+                    divideDivisorRange = 2..10,
+                    divideQuotientRange = 3..15,
                 )
 
                 TaskDifficulty.HARD -> ArithmeticDifficultyProfile(
                     addRange = 100..999,
                     subtractRange = 100..999,
-                    multiplyRange = 10..29,
+                    multiplyRange = 12..49,
+                    divideDivisorRange = 3..15,
+                    divideQuotientRange = 8..40,
                 )
             }
     }
@@ -298,6 +333,7 @@ private fun ArithmeticExample.expectedAnswer(): Int =
         ArithmeticOperation.ADD -> leftOperand + rightOperand
         ArithmeticOperation.SUBTRACT -> leftOperand - rightOperand
         ArithmeticOperation.MULTIPLY -> leftOperand * rightOperand
+        ArithmeticOperation.DIVIDE -> leftOperand / rightOperand
     }
 
 private fun Int.saturatingIncrement(): Int = if (this == Int.MAX_VALUE) this else this + 1

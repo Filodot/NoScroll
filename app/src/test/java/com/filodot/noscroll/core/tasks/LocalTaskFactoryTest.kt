@@ -42,6 +42,25 @@ class LocalTaskFactoryTest {
         assertEquals(TaskTarget.INSTAGRAM, second.target)
         assertEquals(TaskCompletionMode.MANUAL_CONFIRMATION, second.completionMode)
         assertTrue(second.prompt.contains("10 отжиманий"))
+        assertTrue(second.prompt.contains("противопоказания"))
+    }
+
+    @Test
+    fun `sport tasks rotate across safe movement families`() {
+        val prompts = (0 until 6).map { sequence ->
+            factory.create(
+                TaskDifficulty.HARD,
+                TaskTrigger.INTERVAL,
+                TaskTarget.YOUTUBE_SHORTS,
+                setOf(TaskType.PUSH_UPS),
+                emptyList(),
+                sequence,
+            ).prompt
+        }
+
+        assertEquals(6, prompts.toSet().size)
+        assertTrue(prompts.any { "планки" in it })
+        assertTrue(prompts.any { "приседаний" in it })
     }
 
     @Test

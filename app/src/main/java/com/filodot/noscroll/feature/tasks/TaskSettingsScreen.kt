@@ -388,14 +388,14 @@ private fun SectionTitle(text: String) {
 
 private fun taskTypeLabel(type: TaskType): String = when (type) {
     TaskType.ARITHMETIC -> "Арифметика"
-    TaskType.PUSH_UPS -> "Отжимания"
+    TaskType.PUSH_UPS -> "Движение"
     TaskType.CUSTOM -> "Мои пресеты"
     TaskType.LEARNING -> "Умные уроки"
 }
 
 private fun taskTypeDescription(type: TaskType): String = when (type) {
     TaskType.ARITHMETIC -> "Ответ проверяется автоматически"
-    TaskType.PUSH_UPS -> "5 / 10 / 20 повторений по сложности"
+    TaskType.PUSH_UPS -> "6 безопасных вариантов: сила, ноги, корпус и мобильность"
     TaskType.CUSTOM -> "Одно из сохранённых вами заданий"
     TaskType.LEARNING -> "Один вопрос из готового офлайн-урока"
 }

@@ -98,6 +98,16 @@ abstract class LearningDao {
     abstract suspend fun getNextValidatedLesson(courseId: String): LessonPackageEntity?
 
     @Query(
+        "SELECT lesson_packages.* FROM lesson_packages " +
+            "INNER JOIN learning_courses ON learning_courses.id = lesson_packages.course_id " +
+            "WHERE lesson_packages.course_id = :courseId " +
+            "AND lesson_packages.status = 'VALIDATED' " +
+            "AND lesson_packages.plan_version = learning_courses.plan_version " +
+            "ORDER BY lesson_packages.generated_at_epoch_millis, lesson_packages.id",
+    )
+    abstract suspend fun getValidatedLessons(courseId: String): List<LessonPackageEntity>
+
+    @Query(
         "SELECT COUNT(*) FROM lesson_packages " +
             "INNER JOIN learning_courses ON learning_courses.id = lesson_packages.course_id " +
             "WHERE lesson_packages.course_id = :courseId " +

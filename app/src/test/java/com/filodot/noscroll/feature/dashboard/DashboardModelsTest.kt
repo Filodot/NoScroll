@@ -86,6 +86,7 @@ class DashboardModelsTest {
 
         assertFalse(allOff.emergencyAvailable)
         assertTrue(dailyUnavailable.emergencyAvailable)
+        assertTrue(allOff.copy(focusMode = FocusModeUiState(active = true)).emergencyAvailable)
     }
 
     @Test

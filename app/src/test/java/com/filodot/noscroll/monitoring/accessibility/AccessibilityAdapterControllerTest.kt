@@ -190,7 +190,7 @@ class AccessibilityAdapterControllerTest {
     }
 
     @Test
-    fun `foreign content noise does not clear active target but foreign window does`() {
+    fun `foreign content noise is ignored and foreign window publishes its package`() {
         val scheduler = ManualAccessibilityScanScheduler()
         val controller = controller(scheduler)
         controller.onServiceConnected()
@@ -221,7 +221,7 @@ class AccessibilityAdapterControllerTest {
                 3,
             ),
         )
-        assertNull(controller.state.value.foregroundPackage)
+        assertEquals("com.example.other", controller.state.value.foregroundPackage)
     }
 
     @Test

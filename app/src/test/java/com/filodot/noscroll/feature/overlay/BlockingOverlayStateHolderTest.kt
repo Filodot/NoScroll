@@ -11,6 +11,32 @@ import org.junit.Test
 
 class BlockingOverlayStateHolderTest {
     @Test
+    fun `focus emergency form records focus activation source`() {
+        val holder = BlockingOverlayStateHolder(taskState())
+
+        holder.dispatch(
+            BlockingOverlayAction.OpenEmergencyFormFor(EmergencyActivationSource.FOCUS_MODE),
+        )
+
+        assertEquals(EmergencyActivationSource.FOCUS_MODE, holder.state.value.emergencySource)
+    }
+
+    @Test
+    fun `physical task can be replaced immediately for safety`() {
+        var effect: BlockingOverlayEffect? = null
+        val holder = BlockingOverlayStateHolder(
+            taskState().copy(
+                type = com.filodot.noscroll.core.model.TaskType.PUSH_UPS,
+                completionMode = com.filodot.noscroll.core.model.TaskCompletionMode.MANUAL_CONFIRMATION,
+            ),
+        ) { effect = it }
+
+        holder.dispatch(BlockingOverlayAction.RequestAnotherTask)
+
+        assertEquals(BlockingOverlayEffect.RequestAnotherTask, effect)
+    }
+
+    @Test
     fun `empty answer cannot start verification`() {
         val effects = mutableListOf<BlockingOverlayEffect>()
         val holder = holder(effects)

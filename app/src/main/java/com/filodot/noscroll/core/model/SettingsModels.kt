@@ -1,5 +1,6 @@
 package com.filodot.noscroll.core.model
 
+import com.filodot.noscroll.core.focus.FocusAppCatalog
 import java.time.Instant
 
 enum class LimitPreset {
@@ -24,6 +25,10 @@ data class UserSettings(
     val selectedLearningCourseIds: Set<String> = emptySet(),
     val preset: LimitPreset = LimitPreset.BALANCED,
     val emergencyActive: Boolean = false,
+    val focusDurationMinutes: Int = DEFAULT_FOCUS_DURATION_MINUTES,
+    val focusBlockedPackages: Set<String> = FocusAppCatalog.defaultPackages,
+    val focusStartedAt: Instant? = null,
+    val focusEndsAt: Instant? = null,
     val accessibilityDisclosureAcceptedAt: Instant? = null,
     val usageDisclosureSeenAt: Instant? = null,
     val detectorRulesVersion: Int = DEFAULT_DETECTOR_RULES_VERSION,
@@ -36,7 +41,8 @@ data class UserSettings(
         const val DEFAULT_MEDIUM_THRESHOLD_MINUTES = 10
         const val DEFAULT_HARD_THRESHOLD_MINUTES = 25
         const val DEFAULT_DIFFICULTY_DECAY_BREAK_MINUTES = 5
+        const val DEFAULT_FOCUS_DURATION_MINUTES = 30
         const val DEFAULT_DETECTOR_RULES_VERSION = 1
-        const val SETTINGS_SCHEMA_VERSION = 3
+        const val SETTINGS_SCHEMA_VERSION = 4
     }
 }

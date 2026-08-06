@@ -6,6 +6,7 @@ enum class ArithmeticOperation {
     ADD,
     SUBTRACT,
     MULTIPLY,
+    DIVIDE,
 }
 
 /** Difficulty is task-type agnostic so future learning tasks can use the same gate policy. */

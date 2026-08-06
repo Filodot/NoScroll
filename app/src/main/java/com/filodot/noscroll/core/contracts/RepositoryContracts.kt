@@ -62,6 +62,9 @@ interface LearningRepository {
     /** Atomically moves the returned package out of the validated offline queue. */
     suspend fun takeNextLesson(courseId: String): LessonPackage?
 
+    /** Validated packages currently reserved in the offline queue, in consumption order. */
+    suspend fun getValidatedLessons(courseId: String): List<LessonPackage>
+
     fun observeValidatedLessonCount(courseId: String): Flow<Int>
 
     suspend fun saveAttempt(attempt: LearningAttempt)

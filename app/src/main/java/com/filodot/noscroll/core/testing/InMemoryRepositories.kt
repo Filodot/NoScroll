@@ -148,6 +148,9 @@ class InMemoryLearningRepository(
         return consumed
     }
 
+    override suspend fun getValidatedLessons(courseId: String): List<LessonPackage> =
+        validatedLessons(courseId)
+
     override fun observeValidatedLessonCount(courseId: String): Flow<Int> =
         mutableLessons.map { lessons ->
             lessons.count {

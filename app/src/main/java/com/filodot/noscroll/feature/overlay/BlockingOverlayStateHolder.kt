@@ -87,6 +87,9 @@ sealed interface BlockingOverlayAction {
     data object OpenYouTube : BlockingOverlayAction
     data object SystemBack : BlockingOverlayAction
     data object OpenEmergencyForm : BlockingOverlayAction
+    data class OpenEmergencyFormFor(
+        val source: EmergencyActivationSource,
+    ) : BlockingOverlayAction
     data class UpdateEmergencyReason(val value: String) : BlockingOverlayAction
     data object ConfirmEmergency : BlockingOverlayAction
     data object CancelEmergency : BlockingOverlayAction
@@ -116,7 +119,7 @@ sealed interface BlockingOverlayEffect {
 
 class BlockingOverlayStateHolder(
     initialEnforcement: EnforcementUiState,
-    emergencySourceOverride: EmergencyActivationSource? = null,
+    private val emergencySourceOverride: EmergencyActivationSource? = null,
     private val emitEffect: (BlockingOverlayEffect) -> Unit = {},
 ) {
     private val mutableState = MutableStateFlow(
@@ -141,6 +144,7 @@ class BlockingOverlayStateHolder(
             BlockingOverlayAction.OpenYouTube -> emitEffect(BlockingOverlayEffect.OpenYouTube)
             BlockingOverlayAction.SystemBack -> handleBack()
             BlockingOverlayAction.OpenEmergencyForm -> openEmergencyForm()
+            is BlockingOverlayAction.OpenEmergencyFormFor -> openEmergencyForm(action.source)
             is BlockingOverlayAction.UpdateEmergencyReason ->
                 updateEmergencyReason(action.value)
 
@@ -244,7 +248,9 @@ class BlockingOverlayStateHolder(
 
     private fun requestAnotherTask() {
         val task = mutableState.value.enforcement as? EnforcementUiState.TaskGate ?: return
-        if (task.wrongAttempts < WRONG_ATTEMPTS_FOR_REPLACEMENT ||
+        val immediatePhysicalReplacement = task.type == TaskType.PUSH_UPS
+        if ((!immediatePhysicalReplacement &&
+                task.wrongAttempts < WRONG_ATTEMPTS_FOR_REPLACEMENT) ||
             task.answerStatus == TaskAnswerStatus.CHECKING ||
             task.answerStatus == TaskAnswerStatus.CORRECT
         ) {
@@ -275,10 +281,13 @@ class BlockingOverlayStateHolder(
         }
     }
 
-    private fun openEmergencyForm() {
+    private fun openEmergencyForm(source: EmergencyActivationSource? = null) {
         val current = mutableState.value
         if (current.emergencyForm != null) return
-        mutableState.value = current.copy(emergencyForm = EmergencyFormUiState())
+        mutableState.value = current.copy(
+            emergencyForm = EmergencyFormUiState(),
+            emergencySourceOverride = source ?: emergencySourceOverride,
+        )
     }
 
     private fun updateEmergencyReason(value: String) {
@@ -312,7 +321,10 @@ class BlockingOverlayStateHolder(
         val current = mutableState.value
         val form = current.emergencyForm ?: return
         if (form.submitting) return
-        mutableState.value = current.copy(emergencyForm = null)
+        mutableState.value = current.copy(
+            emergencyForm = null,
+            emergencySourceOverride = emergencySourceOverride,
+        )
     }
 
     private fun finishEmergencyActivation(
@@ -322,7 +334,10 @@ class BlockingOverlayStateHolder(
         val form = current.emergencyForm ?: return
         if (!form.submitting) return
         if (action.succeeded) {
-            mutableState.value = current.copy(emergencyForm = null)
+            mutableState.value = current.copy(
+                emergencyForm = null,
+                emergencySourceOverride = emergencySourceOverride,
+            )
             emitEffect(BlockingOverlayEffect.EmergencyActivated)
         } else {
             mutableState.value = current.copy(

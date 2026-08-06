@@ -121,6 +121,32 @@ class DashboardScreenTest {
     }
 
     @Test
+    fun focusModeRequiresConfigurationAndSecondConfirmation() {
+        var lastAction: DashboardAction? = null
+        val youtube = "com.google.android.youtube"
+        composeRule.setDashboard(
+            state = normalState().copy(
+                focusMode = FocusModeUiState(
+                    durationMinutes = 30,
+                    selectedPackages = setOf(youtube),
+                    availableApps = listOf(FocusAppUi(youtube, "YouTube")),
+                ),
+            ),
+            onAction = { lastAction = it },
+        )
+
+        composeRule.onNodeWithText("Начать фокус").performClick()
+        composeRule.onNodeWithText("Настроить фокус").assertIsDisplayed()
+        composeRule.onNodeWithText("Продолжить").performClick()
+        composeRule.onNodeWithText("Включить полный блок?").assertIsDisplayed()
+        composeRule.onNodeWithText("Включить блок").performClick()
+
+        composeRule.runOnIdle {
+            check(lastAction == DashboardAction.StartFocusMode(30, setOf(youtube)))
+        }
+    }
+
+    @Test
     fun allLimitsDisabled_disablesEmergencySwitchWithExplanation() {
         composeRule.setDashboard(
             normalState().copy(

@@ -40,7 +40,7 @@ class LocalTaskFactory(
                 trigger = trigger,
                 target = target,
                 type = type,
-                prompt = "Сделайте ${pushUpsFor(difficulty)} отжиманий в комфортном темпе",
+                prompt = sportPrompt(difficulty, sequence),
             )
 
             TaskType.CUSTOM -> {
@@ -86,8 +86,29 @@ class LocalTaskFactory(
     }
 }
 
-private fun pushUpsFor(difficulty: TaskDifficulty): Int = when (difficulty) {
-    TaskDifficulty.EASY -> 5
-    TaskDifficulty.MEDIUM -> 10
-    TaskDifficulty.HARD -> 20
+private data class SportExercise(
+    val name: String,
+    val easy: String,
+    val medium: String,
+    val hard: String,
+)
+
+private val SPORT_EXERCISES = listOf(
+    SportExercise("приседаний", "6", "12", "20"),
+    SportExercise("отжиманий от стены или опоры", "5", "10", "15"),
+    SportExercise("обратных выпадов на каждую ногу", "4", "8", "12"),
+    SportExercise("ягодичных мостиков", "8", "15", "25"),
+    SportExercise("подъёмов на носки", "10", "20", "30"),
+    SportExercise("секунд планки в удобном варианте", "15", "30", "45"),
+)
+
+private fun sportPrompt(difficulty: TaskDifficulty, sequence: Int): String {
+    val exercise = SPORT_EXERCISES[Math.floorMod(sequence, SPORT_EXERCISES.size)]
+    val amount = when (difficulty) {
+        TaskDifficulty.EASY -> exercise.easy
+        TaskDifficulty.MEDIUM -> exercise.medium
+        TaskDifficulty.HARD -> exercise.hard
+    }
+    return "Сделайте $amount ${exercise.name} в спокойном темпе. " +
+        "Если есть противопоказания или боль — выберите другое задание."
 }

@@ -4,6 +4,8 @@ import android.os.SystemClock
 import android.util.Log
 import com.filodot.noscroll.core.contracts.WallClock
 import com.filodot.noscroll.core.contracts.LearningRepository
+import com.filodot.noscroll.core.focus.FocusAppCatalog
+import com.filodot.noscroll.core.focus.FocusSession
 import com.filodot.noscroll.core.learning.gate.LearningGateTaskFactory
 import com.filodot.noscroll.core.learning.model.AttemptResult
 import com.filodot.noscroll.core.model.ArithmeticOperation
@@ -139,6 +141,7 @@ class MonitoringCoordinator(
     private var emergencyOverrideActive = false
     private var activeService: NoScrollAccessibilityService? = null
     private var shortsEjectionBlockedUntilElapsedMillis = 0L
+    private var focusEjectionBlockedUntilElapsedMillis = 0L
     @Volatile
     private var lastHealthyHeartbeatElapsedMillis: Long? = null
     private val heartbeatWake = Channel<Unit>(Channel.CONFLATED)
@@ -393,10 +396,20 @@ class MonitoringCoordinator(
 
     suspend fun replaceTask(): EnforcementUiState.TaskGate? = mutex.withLock {
         val current = taskRepository.pendingTask.value ?: return@withLock null
-        if (current.wrongAttempts < WRONG_ATTEMPTS_FOR_REPLACEMENT) return@withLock null
+        if (
+            current.type != TaskType.PUSH_UPS &&
+            current.wrongAttempts < WRONG_ATTEMPTS_FOR_REPLACEMENT
+        ) {
+            return@withLock null
+        }
         recordLearningResult(current, AttemptResult.REPLACED_AS_SUSPICIOUS)
         taskRepository.clear(current.id)
-        val replacement = newTask(current.difficulty, current.trigger, current.target)
+        val replacement = newTask(
+            current.difficulty,
+            current.trigger,
+            current.target,
+            sequenceOffset = 1,
+        )
         taskRepository.save(replacement)
         usageRepository.saveGateCycle(
             usageRepository.gateCycle.value.copy(
@@ -478,6 +491,35 @@ class MonitoringCoordinator(
             } ?: return@withLock
 
             mutableEnforcement.value = ensureTask(cycle, usage, trigger, target)
+        }
+    }
+
+    /** Starts a persisted focus session. Early bypass is intentionally delegated to Emergency Stop. */
+    suspend fun startFocusMode(durationMinutes: Int, packageNames: Set<String>): Boolean {
+        ready.first { it }
+        return mutex.withLock {
+            val packages = FocusAppCatalog.sanitize(packageNames)
+            val safeDuration = durationMinutes.coerceIn(MIN_FOCUS_MINUTES, MAX_FOCUS_MINUTES)
+            val current = settingsRepository.settings.value
+            if (
+                packages.isEmpty() ||
+                !systemAccess.state.value.accessibilityGranted ||
+                current.emergencyActive ||
+                emergencyRepository.state.value.isActive
+            ) {
+                return@withLock false
+            }
+            val now = wallClock.now()
+            settingsRepository.save(
+                current.copy(
+                    focusDurationMinutes = safeDuration,
+                    focusBlockedPackages = packages,
+                    focusStartedAt = now,
+                    focusEndsAt = now.plusSeconds(safeDuration.toLong() * SECONDS_PER_MINUTE),
+                ),
+            )
+            heartbeatWake.trySend(Unit)
+            true
         }
     }
 
@@ -650,8 +692,14 @@ class MonitoringCoordinator(
     }
 
     private suspend fun awaitNextHeartbeat() {
+        val settings = settingsRepository.settings.value
         val targetForeground = latestDeviceState.foregroundPackage in
-            AccessibilityAdapterController.TARGET_PACKAGE_NAMES
+            AccessibilityAdapterController.TARGET_PACKAGE_NAMES ||
+            FocusSession(
+                startedAt = settings.focusStartedAt,
+                endsAt = settings.focusEndsAt,
+                blockedPackages = settings.focusBlockedPackages,
+            ).blocks(latestDeviceState.foregroundPackage, wallClock.now())
         val waitMillis = if (targetForeground) {
             ACTIVE_HEARTBEAT_MILLIS
         } else {
@@ -676,6 +724,7 @@ class MonitoringCoordinator(
         triggeringEvent: AccessibilityWindowEvent?,
     ) {
         val now = wallClock.now()
+        if (evaluateFocusModeLocked(now)) return
         val youtubeForeground = latestDeviceState.foregroundPackage ==
             AccessibilityAdapterController.YOUTUBE_PACKAGE_NAME
         val access = systemAccess.state.value
@@ -760,6 +809,44 @@ class MonitoringCoordinator(
             is PolicyDecision.RequirementsMissing,
             -> deferredIntervalGate.reset()
         }
+    }
+
+    private suspend fun evaluateFocusModeLocked(now: Instant): Boolean {
+        val settings = settingsRepository.settings.value
+        val session = FocusSession(
+            startedAt = settings.focusStartedAt,
+            endsAt = settings.focusEndsAt,
+            blockedPackages = FocusAppCatalog.sanitize(settings.focusBlockedPackages),
+        )
+        if (!session.isActiveAt(now)) {
+            if (settings.focusStartedAt != null || settings.focusEndsAt != null) {
+                settingsRepository.save(settings.copy(focusStartedAt = null, focusEndsAt = null))
+            }
+            return false
+        }
+        if (
+            settings.emergencyActive ||
+            emergencyOverrideActive ||
+            emergencyRepository.state.value.isActive ||
+            !systemAccess.state.value.accessibilityGranted
+        ) {
+            return false
+        }
+        val packageName = latestDeviceState.foregroundPackage
+        if (!session.blocks(packageName, now)) return false
+        requestFocusEjection(packageName.orEmpty())
+        return true
+    }
+
+    private fun requestFocusEjection(packageName: String) {
+        val elapsed = SystemClock.elapsedRealtime()
+        if (elapsed < focusEjectionBlockedUntilElapsedMillis) return
+        focusEjectionBlockedUntilElapsedMillis = elapsed + FOCUS_EJECTION_THROTTLE_MILLIS
+        val label = FocusAppCatalog.apps
+            .firstOrNull { it.packageName == packageName }
+            ?.label
+            ?: "Приложение"
+        activeService?.ejectBlockedApp(label)
     }
 
     private suspend fun evaluateInstagramPolicyLocked(
@@ -892,6 +979,7 @@ class MonitoringCoordinator(
         difficulty: TaskDifficulty,
         trigger: TaskTrigger,
         target: TaskTarget,
+        sequenceOffset: Int = 0,
     ): PendingTask {
         val settings = settingsRepository.settings.value
         val customPresets = taskPresetRepository.presets.value
@@ -899,7 +987,9 @@ class MonitoringCoordinator(
             type in settings.enabledTaskTypes &&
                 (type != TaskType.CUSTOM || customPresets.any { it.enabled })
         }.ifEmpty { listOf(TaskType.ARITHMETIC) }
-        val sequence = usageRepository.dailyUsage.value.gatesShown
+        val sequence = (usageRepository.dailyUsage.value.gatesShown.toLong() + sequenceOffset)
+            .coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong())
+            .toInt()
         val selected = available[Math.floorMod(sequence, available.size)]
         if (selected == TaskType.LEARNING) {
             learningTaskFactory.create(
@@ -984,11 +1074,13 @@ class MonitoringCoordinator(
             ArithmeticOperation.ADD -> "+"
             ArithmeticOperation.SUBTRACT -> "−"
             ArithmeticOperation.MULTIPLY -> "×"
+            ArithmeticOperation.DIVIDE -> "÷"
         }
         val spokenOperation = when (operation) {
             ArithmeticOperation.ADD -> "плюс"
             ArithmeticOperation.SUBTRACT -> "минус"
             ArithmeticOperation.MULTIPLY -> "умножить на"
+            ArithmeticOperation.DIVIDE -> "разделить на"
         }
         return EnforcementUiState.TaskGate(
             taskId = id,
@@ -1162,6 +1254,9 @@ class MonitoringCoordinator(
         private const val SECONDS_PER_MINUTE = 60L
         private const val WRONG_ATTEMPTS_FOR_REPLACEMENT = 3
         private const val SHORTS_EJECTION_THROTTLE_MILLIS = 2_000L
+        private const val FOCUS_EJECTION_THROTTLE_MILLIS = 1_500L
+        private const val MIN_FOCUS_MINUTES = 5
+        private const val MAX_FOCUS_MINUTES = 720
         private const val STREAM_RETRY_MILLIS = 1_000L
         private const val FAILURE_DEVICE_STATE_STREAM = "DEVICE_STATE_STREAM"
         private const val FAILURE_EVENT_STREAM = "EVENT_STREAM"

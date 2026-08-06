@@ -33,6 +33,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.filodot.noscroll.core.model.EmergencyActivationSource
+import com.filodot.noscroll.core.focus.FocusAppCatalog
 import com.filodot.noscroll.core.model.EmergencyEvent
 import com.filodot.noscroll.core.model.EmergencyState
 import com.filodot.noscroll.core.model.GateCycle
@@ -54,6 +55,8 @@ import com.filodot.noscroll.feature.dashboard.DashboardScreen
 import com.filodot.noscroll.feature.dashboard.DashboardUiState
 import com.filodot.noscroll.feature.dashboard.DailyLimitUiState
 import com.filodot.noscroll.feature.dashboard.EmergencyUiState
+import com.filodot.noscroll.feature.dashboard.FocusAppUi
+import com.filodot.noscroll.feature.dashboard.FocusModeUiState
 import com.filodot.noscroll.feature.dashboard.InstagramLimitUiState
 import com.filodot.noscroll.feature.dashboard.ShortsLimitUiState
 import com.filodot.noscroll.feature.history.EmergencyHistoryAction
@@ -412,6 +415,50 @@ fun NoScrollApp(
                                     appGraph.monitoring?.prepareChallengeForApp(
                                         TaskTarget.INSTAGRAM,
                                     )
+                                }
+
+                                is DashboardAction.StartFocusMode -> scope.launch {
+                                    val monitoring = appGraph.monitoring
+                                    val started = if (monitoring != null) {
+                                        monitoring.startFocusMode(
+                                            action.durationMinutes,
+                                            action.packageNames,
+                                        )
+                                    } else {
+                                        val now = Instant.now()
+                                        val packages = FocusAppCatalog.sanitize(action.packageNames)
+                                        if (packages.isEmpty()) {
+                                            false
+                                        } else {
+                                            appGraph.settingsRepository.save(
+                                                appGraph.settingsRepository.settings.value.copy(
+                                                    focusDurationMinutes = action.durationMinutes,
+                                                    focusBlockedPackages = packages,
+                                                    focusStartedAt = now,
+                                                    focusEndsAt = now.plusSeconds(
+                                                        action.durationMinutes.toLong() * 60,
+                                                    ),
+                                                ),
+                                            )
+                                            true
+                                        }
+                                    }
+                                    snackbarHostState.showSnackbar(
+                                        if (started) {
+                                            "Режим «Не отвлекаться» включён"
+                                        } else {
+                                            "Не удалось включить фокус: проверьте Accessibility"
+                                        },
+                                    )
+                                }
+
+                                DashboardAction.OpenFocusEmergency -> {
+                                    emergencyHolder.dispatch(
+                                        BlockingOverlayAction.OpenEmergencyFormFor(
+                                            EmergencyActivationSource.FOCUS_MODE,
+                                        ),
+                                    )
+                                    navController.navigate(AppRoute.Emergency.path)
                                 }
 
                                 is DashboardAction.SetEmergencyEnabled -> {
@@ -821,6 +868,32 @@ private fun buildDashboardState(
             activeSinceLabel = activeEmergency?.activatedAt?.atZone(ZoneId.systemDefault())
                 ?.format(DateTimeFormatter.ofPattern("HH:mm")),
         ),
+        focusMode = settings.focusEndsAt.let { endsAt ->
+            val active = endsAt?.isAfter(now) == true &&
+                settings.focusBlockedPackages.isNotEmpty()
+            val packages = FocusAppCatalog.sanitize(settings.focusBlockedPackages)
+            FocusModeUiState(
+                active = active,
+                endsAtLabel = endsAt
+                    ?.takeIf { active }
+                    ?.atZone(ZoneId.systemDefault())
+                    ?.format(DateTimeFormatter.ofPattern("HH:mm")),
+                remainingMinutes = endsAt
+                    ?.takeIf { active }
+                    ?.let { end ->
+                        (Duration.between(now, end).seconds.coerceAtLeast(0) + 59) / 60
+                    }
+                    ?: 0,
+                durationMinutes = settings.focusDurationMinutes,
+                selectedPackages = packages,
+                blockedAppLabels = FocusAppCatalog.apps
+                    .filter { it.packageName in packages }
+                    .map { it.label },
+                availableApps = FocusAppCatalog.apps.map {
+                    FocusAppUi(packageName = it.packageName, label = it.label)
+                },
+            )
+        },
     )
 }
 
@@ -960,6 +1033,7 @@ private fun EmergencyEvent.toHistoryItem(): EmergencyHistoryItemUi {
             EmergencyActivationSource.DASHBOARD -> "Экран «Сегодня»"
             EmergencyActivationSource.TASK_GATE -> "Задание Shorts"
             EmergencyActivationSource.DAILY_LIMIT -> "Дневной лимит"
+            EmergencyActivationSource.FOCUS_MODE -> "Режим «Не отвлекаться»"
         },
     )
 }

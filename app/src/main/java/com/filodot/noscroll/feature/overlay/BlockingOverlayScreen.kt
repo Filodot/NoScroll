@@ -358,6 +358,15 @@ private fun TaskGateContent(
         ) {
             Text(if (task.answerStatus == TaskAnswerStatus.CHECKING) "Сохраняем…" else "Выполнено")
         }
+        if (task.type == TaskType.PUSH_UPS) {
+            Spacer(Modifier.height(8.dp))
+            TextButton(
+                onClick = { onAction(BlockingOverlayAction.RequestAnotherTask) },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) {
+                Text("Другое движение")
+            }
+        }
     }
 }
 

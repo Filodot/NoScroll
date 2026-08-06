@@ -104,6 +104,10 @@ class LearningRoomRepositoryTest {
 
         assertEquals(content, recreated.getCourseContent(content.course.id))
         assertEquals(StaticLearningCatalog.firstLesson, recreated.peekNextLesson(content.course.id))
+        assertEquals(
+            listOf(StaticLearningCatalog.firstLesson),
+            recreated.getValidatedLessons(content.course.id),
+        )
         assertEquals(listOf(attempt), recreated.getAttempts(content.course.id))
         assertEquals(listOf(mastery), recreated.getMastery(content.course.id))
         assertEquals(1, recreated.observeValidatedLessonCount(content.course.id).first())

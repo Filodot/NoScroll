@@ -66,6 +66,15 @@ fun interface LessonGenerator {
     ): LessonPackage
 }
 
+/** Lets the UI reserve concepts already waiting offline so batch generation stays diverse. */
+interface BufferedLessonGenerator : LessonGenerator {
+    suspend fun generateNext(
+        content: LearningCourseContent,
+        mastery: List<ConceptMastery>,
+        reservedConceptIds: Set<String>,
+    ): LessonPackage
+}
+
 class LessonGenerationException(
     message: String,
     val attempts: Int,
@@ -80,10 +89,16 @@ class AiLessonGenerator(
     private val now: () -> Instant = Instant::now,
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
     private val maximumAttempts: Int = 3,
-) : LessonGenerator {
+) : BufferedLessonGenerator {
     override suspend fun generate(
         content: LearningCourseContent,
         mastery: List<ConceptMastery>,
+    ): LessonPackage = generateNext(content, mastery, emptySet())
+
+    override suspend fun generateNext(
+        content: LearningCourseContent,
+        mastery: List<ConceptMastery>,
+        reservedConceptIds: Set<String>,
     ): LessonPackage {
         require(content.course.status == com.filodot.noscroll.core.learning.model.CourseStatus.READY) {
             "План курса ещё не подтверждён"
@@ -95,7 +110,20 @@ class AiLessonGenerator(
             now = now(),
             maxConcepts = 3,
         )
-        val targetConcepts = scheduled.map { it.concept }.ifEmpty {
+        val validReserved = reservedConceptIds.intersect(content.concepts.mapTo(mutableSetOf()) { it.id })
+        val targetConcepts = scheduled
+            .map { it.concept }
+            .filterNot { it.id in validReserved }
+            .take(3)
+            .ifEmpty {
+            content.concepts
+                .filterNot { masteryById[it.id]?.mastered == true }
+                .filterNot { it.id in validReserved }
+                .sortedBy(LearningConcept::position)
+                .take(3)
+        }.ifEmpty {
+            // The whole plan is already represented in the buffer. Continue with spaced review
+            // instead of failing a larger user-requested batch.
             content.concepts
                 .filterNot { masteryById[it.id]?.mastered == true }
                 .sortedBy(LearningConcept::position)

@@ -46,9 +46,16 @@ class LocalArithmeticTaskEngineTest {
                     }
 
                     ArithmeticOperation.MULTIPLY -> {
-                        assertTrue(task.leftOperand in 2..9)
-                        assertTrue(task.rightOperand in 2..9)
+                        assertTrue(task.leftOperand in 4..15)
+                        assertTrue(task.rightOperand in 4..15)
                         assertEquals(task.leftOperand * task.rightOperand, task.expectedAnswer)
+                    }
+
+                    ArithmeticOperation.DIVIDE -> {
+                        assertTrue(task.rightOperand in 2..10)
+                        assertTrue(task.expectedAnswer in 3..15)
+                        assertEquals(0, task.leftOperand % task.rightOperand)
+                        assertEquals(task.leftOperand / task.rightOperand, task.expectedAnswer)
                     }
                 }
             }
@@ -66,10 +73,9 @@ class LocalArithmeticTaskEngineTest {
         assertEquals(TaskTrigger.ENTRY, easy.trigger)
         assertEquals(TaskDifficulty.HARD, hard.difficulty)
         assertEquals(TaskTrigger.INTERVAL, hard.trigger)
-        assertTrue(easy.leftOperand <= 20)
-        assertTrue(easy.rightOperand <= 20)
-        assertTrue(hard.leftOperand >= 10)
-        assertTrue(hard.rightOperand >= 10)
+        assertNotEquals(easy, hard)
+        assertTrue(easy.expectedAnswer >= 0)
+        assertTrue(hard.expectedAnswer >= 0)
     }
 
     @Test

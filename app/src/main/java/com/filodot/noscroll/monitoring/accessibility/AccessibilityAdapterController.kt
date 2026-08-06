@@ -54,7 +54,8 @@ internal class AccessibilityAdapterController(
     ): Boolean {
         if (!connected) return false
         if (eventType !in SUPPORTED_EVENT_TYPES) return false
-        val targetPackage = packageName?.toString()?.takeIf(TARGET_PACKAGE_NAMES::contains)
+        val reportedPackage = packageName?.toString()?.takeIf(String::isNotBlank) ?: return false
+        val targetPackage = reportedPackage.takeIf(TARGET_PACKAGE_NAMES::contains)
         if (targetPackage == null) {
             // Content events from keyboards, notifications and other accessibility services do
             // not mean that the foreground target was left. Only a window-level transition is a
@@ -62,7 +63,9 @@ internal class AccessibilityAdapterController(
             // undercounting while YouTube or Instagram was still visible.
             if (eventType in FOREGROUND_BOUNDARY_EVENT_TYPES) {
                 coalescer.cancelAndReset()
-                updateDeviceState(foregroundPackage = null)
+                // Focus mode needs the actual foreground package, while content noise from
+                // keyboards and notifications must not replace it.
+                updateDeviceState(foregroundPackage = reportedPackage)
             }
             return false
         }

@@ -14,6 +14,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStoreFile
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.filodot.noscroll.core.contracts.SettingsRepository
+import com.filodot.noscroll.core.focus.FocusAppCatalog
 import com.filodot.noscroll.core.model.LimitPreset
 import com.filodot.noscroll.core.model.TaskType
 import com.filodot.noscroll.core.model.UserSettings
@@ -79,6 +80,13 @@ class DataStoreSettingsRepository(
                     settings.selectedLearningCourseIds.sorted().joinToString(",")
                 preferences[Keys.PRESET] = settings.preset.name
                 preferences[Keys.EMERGENCY_ACTIVE] = settings.emergencyActive
+                preferences[Keys.FOCUS_DURATION_MINUTES] = settings.focusDurationMinutes
+                preferences[Keys.FOCUS_BLOCKED_PACKAGES] = FocusAppCatalog
+                    .sanitize(settings.focusBlockedPackages)
+                    .sorted()
+                    .joinToString(",")
+                preferences.writeInstant(Keys.FOCUS_STARTED_AT, settings.focusStartedAt)
+                preferences.writeInstant(Keys.FOCUS_ENDS_AT, settings.focusEndsAt)
                 preferences[Keys.DETECTOR_RULES_VERSION] = settings.detectorRulesVersion
                 preferences[Keys.SETTINGS_SCHEMA_VERSION] = settings.settingsSchemaVersion
                 preferences.writeInstant(
@@ -125,6 +133,10 @@ private object Keys {
     val SELECTED_LEARNING_COURSE_IDS = stringPreferencesKey("selected_learning_course_ids")
     val PRESET = stringPreferencesKey("preset")
     val EMERGENCY_ACTIVE = booleanPreferencesKey("emergency_active")
+    val FOCUS_DURATION_MINUTES = intPreferencesKey("focus_duration_minutes")
+    val FOCUS_BLOCKED_PACKAGES = stringPreferencesKey("focus_blocked_packages")
+    val FOCUS_STARTED_AT = longPreferencesKey("focus_started_at_epoch_millis")
+    val FOCUS_ENDS_AT = longPreferencesKey("focus_ends_at_epoch_millis")
     val ACCESSIBILITY_DISCLOSURE_ACCEPTED_AT =
         longPreferencesKey("accessibility_disclosure_accepted_at_epoch_millis")
     val USAGE_DISCLOSURE_SEEN_AT =
@@ -152,6 +164,11 @@ private fun preferencesToSettings(preferences: Preferences): UserSettings {
         ?: defaults.difficultyHardThresholdMinutes
             .coerceAtLeast(mediumThreshold + 1)
             .coerceAtMost(240)
+    val storedFocusStartedAt = preferences.readInstant(Keys.FOCUS_STARTED_AT)
+    val storedFocusEndsAt = preferences.readInstant(Keys.FOCUS_ENDS_AT)
+    val validFocusWindow = storedFocusStartedAt != null && storedFocusEndsAt != null &&
+        storedFocusEndsAt.isAfter(storedFocusStartedAt) &&
+        java.time.Duration.between(storedFocusStartedAt, storedFocusEndsAt).toMinutes() in 5..720
     return UserSettings(
         onboardingCompleted = preferences[Keys.ONBOARDING_COMPLETED]
             ?: defaults.onboardingCompleted,
@@ -184,10 +201,23 @@ private fun preferencesToSettings(preferences: Preferences): UserSettings {
             ?.let { stored -> enumValues<LimitPreset>().firstOrNull { it.name == stored } }
             ?: defaults.preset,
         emergencyActive = preferences[Keys.EMERGENCY_ACTIVE] ?: defaults.emergencyActive,
+        focusDurationMinutes = preferences[Keys.FOCUS_DURATION_MINUTES]
+            ?.takeIf { it in 5..720 && it % 5 == 0 }
+            ?: defaults.focusDurationMinutes,
+        focusBlockedPackages = preferences[Keys.FOCUS_BLOCKED_PACKAGES]
+            ?.split(',')
+            ?.map(String::trim)
+            ?.filter(String::isNotEmpty)
+            ?.toSet()
+            ?.let(FocusAppCatalog::sanitize)
+            ?.takeIf(Set<String>::isNotEmpty)
+            ?: defaults.focusBlockedPackages,
+        focusStartedAt = storedFocusStartedAt.takeIf { validFocusWindow },
+        focusEndsAt = storedFocusEndsAt.takeIf { validFocusWindow },
         accessibilityDisclosureAcceptedAt =
-            preferences[Keys.ACCESSIBILITY_DISCLOSURE_ACCEPTED_AT]?.let(Instant::ofEpochMilli),
+            preferences.readInstant(Keys.ACCESSIBILITY_DISCLOSURE_ACCEPTED_AT),
         usageDisclosureSeenAt =
-            preferences[Keys.USAGE_DISCLOSURE_SEEN_AT]?.let(Instant::ofEpochMilli),
+            preferences.readInstant(Keys.USAGE_DISCLOSURE_SEEN_AT),
         detectorRulesVersion = preferences[Keys.DETECTOR_RULES_VERSION]
             ?.takeIf { it > 0 }
             ?: defaults.detectorRulesVersion,
@@ -196,6 +226,9 @@ private fun preferencesToSettings(preferences: Preferences): UserSettings {
             ?: defaults.settingsSchemaVersion,
     )
 }
+
+private fun Preferences.readInstant(key: Preferences.Key<Long>): Instant? =
+    get(key)?.let { epochMillis -> runCatching { Instant.ofEpochMilli(epochMillis) }.getOrNull() }
 
 private fun MutablePreferences.writeInstant(
     key: Preferences.Key<Long>,

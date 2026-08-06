@@ -126,6 +126,18 @@ class NoScrollAccessibilityService :
         }
     }
 
+    /** Immediately leaves an app blocked by an active focus session. */
+    fun ejectBlockedApp(appLabel: String) {
+        mainHandler.post {
+            performGlobalAction(GLOBAL_ACTION_HOME)
+            Toast.makeText(
+                this,
+                "$appLabel заблокировано режимом «Не отвлекаться»",
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+
     @Deprecated("Use ejectTargetAndOpenChallenge")
     fun ejectShortsAndOpenChallenge() = ejectTargetAndOpenChallenge()
 

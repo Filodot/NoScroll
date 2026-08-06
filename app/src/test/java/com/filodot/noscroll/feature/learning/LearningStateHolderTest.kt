@@ -8,6 +8,7 @@ import com.filodot.noscroll.core.learning.ai.AiProviderId
 import com.filodot.noscroll.core.learning.generation.CurriculumGenerator
 import com.filodot.noscroll.core.learning.generation.GeneratedCurriculum
 import com.filodot.noscroll.core.learning.generation.LessonGenerator
+import com.filodot.noscroll.core.learning.generation.BufferedLessonGenerator
 import com.filodot.noscroll.core.learning.importing.LearningMaterialDocument
 import com.filodot.noscroll.core.learning.importing.LearningMaterialGateway
 import com.filodot.noscroll.core.learning.importing.MaterialSection
@@ -24,6 +25,7 @@ import com.filodot.noscroll.core.learning.model.LearningConcept
 import com.filodot.noscroll.core.learning.model.CodeLanguage
 import com.filodot.noscroll.core.learning.model.CodeTestCase
 import com.filodot.noscroll.core.learning.model.MiniCodeContent
+import com.filodot.noscroll.core.learning.model.LessonPackage
 import com.filodot.noscroll.core.learning.model.SelfConfidence
 import com.filodot.noscroll.core.testing.InMemoryAiCredentialRepository
 import com.filodot.noscroll.core.testing.InMemoryLearningRepository
@@ -306,6 +308,111 @@ class LearningStateHolderTest {
             StaticLearningCatalog.firstLesson.id,
             repository.peekNextLesson(readyContent.course.id)?.id,
         )
+    }
+
+    @Test
+    fun `batch generation saves every lesson and reserves queued concepts`() = runTest {
+        val readyContent = LearningCourseContent(
+            course = StaticLearningCatalog.pythonCourse.copy(status = CourseStatus.READY),
+            sources = emptyList(),
+            curriculumNodes = listOf(StaticLearningCatalog.firstTopic),
+            concepts = listOf(
+                StaticLearningCatalog.variablesConcept,
+                StaticLearningCatalog.expressionsConcept,
+            ),
+        )
+        val repository = InMemoryLearningRepository(initialContent = listOf(readyContent))
+        val credentials = InMemoryAiCredentialRepository(
+            initialKeys = mapOf(AiProviderId.GEMINI to "test-secret"),
+        )
+        var generated = 0
+        val reservations = mutableListOf<Set<String>>()
+        val generator = object : BufferedLessonGenerator {
+            override suspend fun generate(
+                content: LearningCourseContent,
+                mastery: List<com.filodot.noscroll.core.learning.model.ConceptMastery>,
+            ): LessonPackage = generateNext(content, mastery, emptySet())
+
+            override suspend fun generateNext(
+                content: LearningCourseContent,
+                mastery: List<com.filodot.noscroll.core.learning.model.ConceptMastery>,
+                reservedConceptIds: Set<String>,
+            ): LessonPackage {
+                reservations += reservedConceptIds.toSet()
+                generated += 1
+                return StaticLearningCatalog.firstLesson.copy(
+                    id = "batch-$generated",
+                    courseId = content.course.id,
+                    planVersion = content.course.planVersion,
+                    activities = StaticLearningCatalog.firstLesson.activities.map {
+                        it.copy(id = "batch-$generated-${it.id}")
+                    },
+                )
+            }
+        }
+        val holder = holder(repository, aiCredentials = credentials, lessonGenerator = generator)
+        runCurrent()
+        holder.dispatch(LearningAction.OpenCourse(readyContent.course.id))
+        runCurrent()
+        holder.dispatch(LearningAction.SetLessonBatchSize(3))
+        holder.dispatch(LearningAction.GenerateLessonBatch)
+        runCurrent()
+
+        assertEquals(3, repository.getValidatedLessons(readyContent.course.id).size)
+        assertTrue(reservations.first().isEmpty())
+        assertTrue(reservations.drop(1).all { it.isNotEmpty() })
+        assertEquals(3, holder.state.value.readyLessons)
+    }
+
+    @Test
+    fun `completing lesson automatically refills offline pool to three`() = runTest {
+        val readyContent = LearningCourseContent(
+            course = StaticLearningCatalog.pythonCourse.copy(status = CourseStatus.READY),
+            sources = emptyList(),
+            curriculumNodes = listOf(StaticLearningCatalog.firstTopic),
+            concepts = listOf(
+                StaticLearningCatalog.variablesConcept,
+                StaticLearningCatalog.expressionsConcept,
+            ),
+        )
+        val oneActivityLesson = StaticLearningCatalog.firstLesson.copy(
+            activities = listOf(StaticLearningCatalog.firstLesson.activities.first()),
+        )
+        val repository = InMemoryLearningRepository(
+            initialContent = listOf(readyContent),
+            initialLessons = listOf(oneActivityLesson),
+        )
+        val credentials = InMemoryAiCredentialRepository(
+            initialKeys = mapOf(AiProviderId.GEMINI to "test-secret"),
+        )
+        var generated = 0
+        val generator = LessonGenerator { content, _ ->
+            generated += 1
+            oneActivityLesson.copy(
+                id = "refill-$generated",
+                courseId = content.course.id,
+                planVersion = content.course.planVersion,
+                activities = oneActivityLesson.activities.map {
+                    it.copy(id = "refill-$generated-${it.id}")
+                },
+            )
+        }
+        val holder = holder(repository, aiCredentials = credentials, lessonGenerator = generator)
+        runCurrent()
+        holder.dispatch(LearningAction.OpenCourse(readyContent.course.id))
+        runCurrent()
+        holder.dispatch(LearningAction.StartLesson)
+        runCurrent()
+        holder.dispatch(LearningAction.OpenLessonQuestions)
+        holder.dispatch(LearningAction.SelectOption("a", multiple = false))
+        holder.dispatch(LearningAction.CheckAnswer)
+        runCurrent()
+        holder.dispatch(LearningAction.ContinueLesson)
+        runCurrent()
+
+        assertEquals(3, repository.getValidatedLessons(readyContent.course.id).size)
+        assertEquals(3, generated)
+        assertEquals(LearningPane.COMPLETED, holder.state.value.pane)
     }
 
     @Test

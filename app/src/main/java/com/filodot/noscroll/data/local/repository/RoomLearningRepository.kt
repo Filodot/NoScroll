@@ -71,6 +71,11 @@ class RoomLearningRepository(
             entity.toModel(dao.getActivities(entity.id))
         }
 
+    override suspend fun getValidatedLessons(courseId: String): List<LessonPackage> =
+        dao.getValidatedLessons(courseId).map { entity ->
+            entity.toModel(dao.getActivities(entity.id))
+        }
+
     override fun observeValidatedLessonCount(courseId: String): Flow<Int> =
         dao.observeValidatedLessonCount(courseId)
 

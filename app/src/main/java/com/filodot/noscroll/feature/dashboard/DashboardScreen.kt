@@ -18,15 +18,22 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
@@ -62,6 +69,13 @@ fun DashboardScreen(
                 ProtectionStatusChip(state.protectionStatus)
                 PriorityStateBanner(state, onAction)
                 Spacer(Modifier.height(16.dp))
+                FocusModeCard(
+                    focus = state.focusMode,
+                    accessibilityEnabled = state.accessibilityEnabled,
+                    emergencyActive = state.emergency.active,
+                    onAction = onAction,
+                )
+                Spacer(Modifier.height(16.dp))
                 ShortsCard(
                     shorts = state.shorts,
                     paused = state.emergency.active,
@@ -80,6 +94,168 @@ fun DashboardScreen(
                 Spacer(Modifier.height(20.dp))
             }
         }
+    }
+}
+
+@Composable
+private fun FocusModeCard(
+    focus: FocusModeUiState,
+    accessibilityEnabled: Boolean,
+    emergencyActive: Boolean,
+    onAction: (DashboardAction) -> Unit,
+) {
+    var showSetup by remember { mutableStateOf(false) }
+    var showConfirmation by remember { mutableStateOf(false) }
+    var durationMinutes by remember(focus.durationMinutes) {
+        mutableStateOf(focus.durationMinutes)
+    }
+    var selectedPackages by remember(focus.selectedPackages) {
+        mutableStateOf(focus.selectedPackages)
+    }
+
+    DashboardCard(title = "Не отвлекаться") {
+        if (focus.active) {
+            Text(
+                if (emergencyActive) "Фокус временно обойдён" else "Фокус включён",
+                style = MaterialTheme.typography.titleLarge,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "До ${focus.endsAtLabel ?: "завершения таймера"} · " +
+                    "примерно ${focus.remainingMinutes.coerceAtLeast(1)} мин",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text("Заблокированы: ${focus.blockedAppLabels.joinToString()}")
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "Досрочный выход возможен только через Emergency Stop с указанием причины.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlinedButton(
+                onClick = { onAction(DashboardAction.OpenFocusEmergency) },
+                enabled = !emergencyActive,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) {
+                Text(if (emergencyActive) "Emergency Stop уже включён" else "Emergency Stop")
+            }
+        } else {
+            Text(
+                "На выбранное время полностью закрывает отвлекающие приложения.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+            Button(
+                onClick = { showSetup = true },
+                enabled = accessibilityEnabled && !emergencyActive,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) {
+                Text("Начать фокус")
+            }
+            if (!accessibilityEnabled) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Сначала включите Accessibility в системных настройках.",
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+    }
+
+    if (showSetup) {
+        AlertDialog(
+            onDismissRequest = { showSetup = false },
+            title = { Text("Настроить фокус") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Время")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(15, 30, 60).forEach { minutes ->
+                            FilterChip(
+                                selected = durationMinutes == minutes,
+                                onClick = { durationMinutes = minutes },
+                                label = { Text("$minutes мин") },
+                            )
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(120, 240).forEach { minutes ->
+                            FilterChip(
+                                selected = durationMinutes == minutes,
+                                onClick = { durationMinutes = minutes },
+                                label = { Text(if (minutes == 120) "2 часа" else "4 часа") },
+                            )
+                        }
+                    }
+                    Text("Приложения")
+                    focus.availableApps.forEach { app ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Text(app.label, modifier = Modifier.weight(1f))
+                            Switch(
+                                checked = app.packageName in selectedPackages,
+                                onCheckedChange = { checked ->
+                                    selectedPackages = if (checked) {
+                                        selectedPackages + app.packageName
+                                    } else {
+                                        selectedPackages - app.packageName
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showSetup = false
+                        showConfirmation = true
+                    },
+                    enabled = selectedPackages.isNotEmpty(),
+                ) { Text("Продолжить") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSetup = false }) { Text("Отмена") }
+            },
+        )
+    }
+
+    if (showConfirmation) {
+        val selectedLabels = focus.availableApps
+            .filter { it.packageName in selectedPackages }
+            .joinToString { it.label }
+        AlertDialog(
+            onDismissRequest = { showConfirmation = false },
+            title = { Text("Включить полный блок?") },
+            text = {
+                Text(
+                    "$selectedLabels будут недоступны $durationMinutes минут. " +
+                        "Отменить таймер обычной кнопкой нельзя: только Emergency Stop " +
+                        "с обязательным объяснением причины.",
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showConfirmation = false
+                        onAction(
+                            DashboardAction.StartFocusMode(
+                                durationMinutes = durationMinutes,
+                                packageNames = selectedPackages,
+                            ),
+                        )
+                    },
+                ) { Text("Включить блок") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConfirmation = false }) { Text("Назад") }
+            },
+        )
     }
 }
 

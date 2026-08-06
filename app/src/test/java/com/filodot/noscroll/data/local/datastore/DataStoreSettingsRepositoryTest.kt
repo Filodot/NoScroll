@@ -5,9 +5,11 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.mutablePreferencesOf
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.filodot.noscroll.core.model.LimitPreset
+import com.filodot.noscroll.core.focus.FocusAppCatalog
 import com.filodot.noscroll.core.model.TaskType
 import com.filodot.noscroll.core.model.UserSettings
 import java.io.File
@@ -65,10 +67,14 @@ class DataStoreSettingsRepositoryTest {
             selectedLearningCourseIds = setOf("course-python", "course-sql"),
             preset = LimitPreset.CUSTOM,
             emergencyActive = true,
+            focusDurationMinutes = 120,
+            focusBlockedPackages = setOf(FocusAppCatalog.YOUTUBE, FocusAppCatalog.TIKTOK),
+            focusStartedAt = Instant.parse("2026-07-14T05:00:00Z"),
+            focusEndsAt = Instant.parse("2026-07-14T07:00:00Z"),
             accessibilityDisclosureAcceptedAt = Instant.parse("2026-07-14T01:02:03Z"),
             usageDisclosureSeenAt = Instant.parse("2026-07-14T04:05:06Z"),
             detectorRulesVersion = 9,
-            settingsSchemaVersion = 3,
+            settingsSchemaVersion = 4,
         )
 
         repository.save(expected)
@@ -130,6 +136,9 @@ class DataStoreSettingsRepositoryTest {
                 intPreferencesKey("difficulty_hard_threshold_minutes") to 1,
                 intPreferencesKey("difficulty_decay_break_minutes") to 0,
                 stringPreferencesKey("enabled_task_types") to "REMOVED_TYPE",
+                intPreferencesKey("focus_duration_minutes") to 3,
+                stringPreferencesKey("focus_blocked_packages") to "malicious.package",
+                longPreferencesKey("focus_started_at_epoch_millis") to Long.MAX_VALUE,
             )
         }
         val repository = DataStoreSettingsRepository(dataStore, scope)

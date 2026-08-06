@@ -6,6 +6,7 @@ enum class EmergencyActivationSource {
     DASHBOARD,
     TASK_GATE,
     DAILY_LIMIT,
+    FOCUS_MODE,
 }
 
 data class EmergencyEvent(
