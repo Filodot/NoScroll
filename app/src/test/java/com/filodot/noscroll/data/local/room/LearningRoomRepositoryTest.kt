@@ -128,6 +128,23 @@ class LearningRoomRepositoryTest {
     }
 
     @Test
+    fun `obsolete course enum cannot break courses screen`() = runBlocking {
+        val invalidCourse = StaticLearningCatalog.pythonCourse.toEntity().copy(
+            status = "REMOVED_STATUS",
+        )
+        database.learningDao().saveCourseContent(
+            course = invalidCourse,
+            sources = emptyList(),
+            sourceChunks = emptyList(),
+            nodes = emptyList(),
+            concepts = emptyList(),
+        )
+
+        assertTrue(repository.courses.first().isEmpty())
+        assertNull(repository.getCourseContent(invalidCourse.id))
+    }
+
+    @Test
     fun `deleting course removes every owned row`() = runBlocking {
         val content = courseContent()
         repository.saveCourseContent(content)

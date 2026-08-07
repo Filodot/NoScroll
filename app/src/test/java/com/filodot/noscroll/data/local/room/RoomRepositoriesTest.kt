@@ -206,6 +206,52 @@ class RoomRepositoriesTest {
     }
 
     @Test
+    fun corruptedStartupRowsAreRemovedAndRepositoriesBecomeReady() = runBlocking {
+        val date = LocalDate.of(2026, 8, 7)
+        val now = Instant.parse("2026-08-07T08:00:00Z")
+        val fallbackDaily = dailyUsage(date, now)
+        val fallbackCycle = gateCycle(date, now)
+        val invalidDaily = fallbackDaily.toEntity().copy(localDate = "not-a-date")
+        val invalidCycle = fallbackCycle.toEntity().copy(localDate = "not-a-date")
+        val invalidTask = pendingTask("invalid-task", now).toEntity().copy(
+            target = "REMOVED_TARGET",
+        )
+        val invalidEmergency = emergency("invalid-emergency", now, null).toEntity().copy(
+            activationSource = "REMOVED_SOURCE",
+        )
+        database.dailyUsageDao().upsert(invalidDaily)
+        database.gateCycleDao().upsert(invalidCycle)
+        database.pendingTaskDao().upsert(invalidTask)
+        database.emergencyEventDao().upsert(invalidEmergency)
+
+        val usageRepository = RoomUsageRepository(
+            database.dailyUsageDao(),
+            database.gateCycleDao(),
+            scope,
+            fallbackDaily,
+            fallbackCycle,
+        )
+        val taskRepository = RoomTaskRepository(database.pendingTaskDao(), scope)
+        val emergencyRepository = RoomEmergencyRepository(database.emergencyEventDao(), scope)
+
+        withTimeout(5_000) {
+            usageRepository.dailyInitialized.filter { it }.first()
+            usageRepository.gateInitialized.filter { it }.first()
+            taskRepository.initialized.filter { it }.first()
+            emergencyRepository.initialized.filter { it }.first()
+        }
+
+        assertEquals(fallbackDaily, usageRepository.dailyUsage.value)
+        assertEquals(fallbackCycle, usageRepository.gateCycle.value)
+        assertNull(taskRepository.pendingTask.value)
+        assertNull(emergencyRepository.state.value.activeEvent)
+        assertNull(database.dailyUsageDao().get(invalidDaily.localDate))
+        assertNull(database.gateCycleDao().get(invalidCycle.id))
+        assertNull(database.pendingTaskDao().get(invalidTask.id))
+        assertNull(database.emergencyEventDao().get(invalidEmergency.id))
+    }
+
+    @Test
     fun rapidUsageUpdatesAreImmediatelyVisibleAndNeverOverwriteEachOther() = runBlocking {
         val date = LocalDate.of(2026, 7, 22)
         val now = Instant.parse("2026-07-22T08:00:00Z")

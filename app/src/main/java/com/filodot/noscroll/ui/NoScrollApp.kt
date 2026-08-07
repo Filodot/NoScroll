@@ -1190,7 +1190,7 @@ private fun NavHostController.navigateTopLevel(destination: AppRoute) {
     }
 }
 
-private sealed class AppRoute(
+internal sealed class AppRoute(
     val path: String,
     val label: String,
     val marker: String,
@@ -1205,7 +1205,8 @@ private sealed class AppRoute(
     data object Emergency : AppRoute("emergency", "Emergency", "E")
 
     companion object {
-        val topLevel = listOf(Dashboard, Limits, Tasks, Learning, Settings)
+        val topLevel: List<AppRoute>
+            get() = listOf(Dashboard, Limits, Tasks, Learning, Settings)
     }
 }
 

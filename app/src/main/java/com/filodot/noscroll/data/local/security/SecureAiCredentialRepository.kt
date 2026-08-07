@@ -65,7 +65,7 @@ class SecureAiCredentialRepository(
 
     override suspend fun getApiKey(providerId: AiProviderId): String? =
         withContext(Dispatchers.IO) {
-            val encrypted = preferences.getString(keyName(providerId), null) ?: return@withContext null
+            val encrypted = preferences.safeString(keyName(providerId)) ?: return@withContext null
             try {
                 cipher.decrypt(encrypted)
             } catch (_: Exception) {
@@ -80,14 +80,16 @@ class SecureAiCredentialRepository(
     }
 
     private fun readSettings(): List<AiProviderSettings> = DEFAULTS.mapIndexed { index, default ->
+        val modelId = preferences.safeString(modelName(default.id))
+            ?.trim()
+            ?.takeIf(::isValidModelId)
+            ?: default.modelId
         AiProviderSettings(
             id = default.id,
-            enabled = preferences.getBoolean(enabledName(default.id), true),
+            enabled = preferences.safeBoolean(enabledName(default.id), true),
             priority = index,
-            modelId = preferences.getString(modelName(default.id), default.modelId)
-                ?.takeIf(String::isNotBlank)
-                ?: default.modelId,
-            hasApiKey = !preferences.getString(keyName(default.id), null).isNullOrBlank(),
+            modelId = modelId,
+            hasApiKey = !preferences.safeString(keyName(default.id)).isNullOrBlank(),
         )
     }
 
@@ -107,8 +109,17 @@ class SecureAiCredentialRepository(
         private fun keyName(id: AiProviderId) = "key_${id.name.lowercase()}"
         private fun enabledName(id: AiProviderId) = "enabled_${id.name.lowercase()}"
         private fun modelName(id: AiProviderId) = "model_${id.name.lowercase()}"
+
+        private fun isValidModelId(modelId: String): Boolean =
+            modelId.length in 3..120 && modelId.matches(Regex("[A-Za-z0-9._:/-]+"))
     }
 }
+
+private fun android.content.SharedPreferences.safeString(key: String): String? =
+    runCatching { getString(key, null) }.getOrNull()
+
+private fun android.content.SharedPreferences.safeBoolean(key: String, default: Boolean): Boolean =
+    runCatching { getBoolean(key, default) }.getOrDefault(default)
 
 interface SecretCipher {
     fun encrypt(plainText: String): String

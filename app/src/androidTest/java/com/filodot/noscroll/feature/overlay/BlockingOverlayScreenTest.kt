@@ -121,7 +121,10 @@ class BlockingOverlayScreenTest {
         var lastAction: BlockingOverlayAction? = null
         composeRule.setOverlay(
             taskOverlay().copy(
-                enforcement = task().copy(answerStatus = TaskAnswerStatus.CORRECT),
+                enforcement = task().copy(
+                    target = TaskTarget.YOUTUBE,
+                    answerStatus = TaskAnswerStatus.CORRECT,
+                ),
             ),
             onAction = { lastAction = it },
         )

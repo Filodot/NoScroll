@@ -29,7 +29,7 @@ class SettingsScreenTest {
 
         composeRule.onNodeWithText("Не включён").assertIsDisplayed()
         composeRule.onNodeWithText("Пропущен").assertIsDisplayed()
-        composeRule.onNodeWithText("Не найден").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Не найден").assertCountEquals(2)
         composeRule.onAllNodesWithText("Настроить").assertCountEquals(2)
     }
 
@@ -39,7 +39,8 @@ class SettingsScreenTest {
 
         composeRule.onNodeWithText("Shorts подтверждён").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText(
-            "Диагностика содержит только коды и счётчики — без текста и элементов экрана YouTube.",
+            "Диагностика содержит только коды и счётчики — без текста и элементов " +
+                "экрана целевых приложений.",
         ).performScrollTo().assertIsDisplayed()
     }
 

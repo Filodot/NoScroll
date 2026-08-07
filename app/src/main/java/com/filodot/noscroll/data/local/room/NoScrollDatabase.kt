@@ -1,6 +1,8 @@
 package com.filodot.noscroll.data.local.room
 
 import android.content.Context
+import android.database.sqlite.SQLiteDatabaseCorruptException
+import android.util.Log
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
@@ -196,10 +198,45 @@ abstract class NoScrollDatabase : RoomDatabase() {
             MIGRATION_9_10,
         )
 
-        fun build(context: Context, name: String = DATABASE_NAME): NoScrollDatabase =
+        fun build(context: Context, name: String = DATABASE_NAME): NoScrollDatabase {
+            val applicationContext = context.applicationContext
+            val candidate = buildInstance(applicationContext, name)
+            return try {
+                openAndVerify(candidate)
+            } catch (error: Throwable) {
+                runCatching(candidate::close)
+                if (!DatabaseFailureClassifier.isCorruption(error)) throw error
+
+                Log.e(LOG_TAG, "Local database is corrupt; recreating it", error)
+                val deleted = runCatching { applicationContext.deleteDatabase(name) }
+                    .getOrElse { deleteError ->
+                        error.addSuppressed(deleteError)
+                        false
+                    }
+                if (!deleted && applicationContext.getDatabasePath(name).exists()) {
+                    throw IllegalStateException("Could not remove corrupt local database", error)
+                }
+                openAndVerify(buildInstance(applicationContext, name))
+            }
+        }
+
+        private fun buildInstance(context: Context, name: String): NoScrollDatabase =
             Room.databaseBuilder(context, NoScrollDatabase::class.java, name)
                 .addMigrations(*ALL_MIGRATIONS)
                 .build()
+
+        private fun openAndVerify(database: NoScrollDatabase): NoScrollDatabase {
+            val sqlite = database.openHelper.writableDatabase
+            sqlite.query("PRAGMA quick_check(1)").use { cursor ->
+                val result = if (cursor.moveToFirst()) cursor.getString(0) else null
+                if (!result.equals("ok", ignoreCase = true)) {
+                    throw SQLiteDatabaseCorruptException(
+                        "SQLite quick_check failed: ${result ?: "no result"}",
+                    )
+                }
+            }
+            return database
+        }
 
         private val LEARNING_TABLE_STATEMENTS = listOf(
             "CREATE TABLE IF NOT EXISTS learning_courses (" +
@@ -259,5 +296,7 @@ abstract class NoScrollDatabase : RoomDatabase() {
                 "section_title TEXT, character_start INTEGER NOT NULL, " +
                 "character_end INTEGER NOT NULL, estimated_tokens INTEGER NOT NULL, " +
                 "PRIMARY KEY(id))"
+
+        private const val LOG_TAG = "NoScrollDatabase"
     }
 }

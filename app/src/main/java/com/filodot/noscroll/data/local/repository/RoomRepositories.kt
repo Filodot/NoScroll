@@ -1,5 +1,6 @@
 package com.filodot.noscroll.data.local.repository
 
+import android.util.Log
 import com.filodot.noscroll.core.contracts.EmergencyRepository
 import com.filodot.noscroll.core.contracts.TaskRepository
 import com.filodot.noscroll.core.contracts.TaskPresetRepository
@@ -52,12 +53,21 @@ class RoomUsageRepository(
     init {
         scope.launch {
             dailyUsageDao.observeLatest()
-                .retryWhen { _, attempt ->
+                .retryWhen { error, attempt ->
+                    Log.w(LOG_TAG, "Could not observe daily_usage; retrying", error)
+                    mutableDailyInitialized.value = true
                     delay(retryDelayMillis(attempt))
                     true
                 }
                 .collect { entity ->
-                    entity?.toModel()?.let { persisted ->
+                    entity?.let { stored ->
+                        decodeOrDelete(
+                            kind = "daily_usage",
+                            entityId = stored.localDate,
+                            delete = { dailyUsageDao.delete(stored.localDate) },
+                            decode = stored::toModel,
+                        )
+                    }?.let { persisted ->
                         val current = mutableDailyUsage.value
                         if (!dailySnapshotObserved || persisted.isAtLeastAsFreshAs(current)) {
                             mutableDailyUsage.value = persisted
@@ -69,12 +79,21 @@ class RoomUsageRepository(
         }
         scope.launch {
             gateCycleDao.observe(GateCycle.CURRENT_GATE_CYCLE_ID)
-                .retryWhen { _, attempt ->
+                .retryWhen { error, attempt ->
+                    Log.w(LOG_TAG, "Could not observe gate_cycle; retrying", error)
+                    mutableGateInitialized.value = true
                     delay(retryDelayMillis(attempt))
                     true
                 }
                 .collect { entity ->
-                    entity?.toModel()?.let { persisted ->
+                    entity?.let { stored ->
+                        decodeOrDelete(
+                            kind = "gate_cycle",
+                            entityId = stored.id,
+                            delete = { gateCycleDao.delete(stored.id) },
+                            decode = stored::toModel,
+                        )
+                    }?.let { persisted ->
                         val current = mutableGateCycle.value
                         if (!gateSnapshotObserved || persisted.updatedAt >= current.updatedAt) {
                             mutableGateCycle.value = persisted
@@ -110,12 +129,21 @@ class RoomTaskRepository(
     init {
         scope.launch {
             dao.observePending()
-                .retryWhen { _, attempt ->
+                .retryWhen { error, attempt ->
+                    Log.w(LOG_TAG, "Could not observe pending_task; retrying", error)
+                    mutableInitialized.value = true
                     delay(retryDelayMillis(attempt))
                     true
                 }
                 .collect { entity ->
-                    mutablePendingTask.value = entity?.toModel()
+                    mutablePendingTask.value = entity?.let { stored ->
+                        decodeOrDelete(
+                            kind = "pending_task",
+                            entityId = stored.id,
+                            delete = { dao.delete(stored.id) },
+                            decode = stored::toModel,
+                        )
+                    }
                     mutableInitialized.value = true
                 }
         }
@@ -145,19 +173,37 @@ class RoomEmergencyRepository(
     init {
         scope.launch {
             dao.observeActive()
-                .retryWhen { _, attempt ->
+                .retryWhen { error, attempt ->
+                    Log.w(LOG_TAG, "Could not observe emergency_event; retrying", error)
+                    mutableInitialized.value = true
                     delay(retryDelayMillis(attempt))
                     true
                 }
                 .collect { entity ->
-                    mutableState.value = EmergencyState(entity?.toModel())
+                    mutableState.value = EmergencyState(
+                        entity?.let { stored ->
+                            decodeOrDelete(
+                                kind = "emergency_event",
+                                entityId = stored.id,
+                                delete = { dao.delete(stored.id) },
+                                decode = stored::toModel,
+                            )
+                        },
+                    )
                     mutableInitialized.value = true
                 }
         }
     }
 
     override val history: Flow<List<EmergencyEvent>> = dao.observeHistory()
-        .map { entities -> entities.map { it.toModel() } }
+        .map { entities ->
+            entities.mapNotNull { entity ->
+                runCatching(entity::toModel).getOrElse { error ->
+                    Log.w(LOG_TAG, "Ignored invalid emergency_event ${entity.id}", error)
+                    null
+                }
+            }
+        }
         .retryWhen { _, attempt ->
             delay(retryDelayMillis(attempt))
             true
@@ -211,12 +257,23 @@ class RoomTaskPresetRepository(
     init {
         scope.launch {
             dao.observeAll()
-                .retryWhen { _, attempt ->
+                .retryWhen { error, attempt ->
+                    Log.w(LOG_TAG, "Could not observe custom_task_preset; retrying", error)
+                    mutableInitialized.value = true
                     delay(retryDelayMillis(attempt))
                     true
                 }
                 .collect { entities ->
-                    mutablePresets.value = entities.map { it.toModel() }
+                    mutablePresets.value = buildList {
+                        entities.forEach { entity ->
+                            decodeOrDelete(
+                                kind = "custom_task_preset",
+                                entityId = entity.id,
+                                delete = { dao.delete(entity.id) },
+                                decode = entity::toModel,
+                            )?.let(::add)
+                        }
+                    }
                     mutableInitialized.value = true
                 }
         }
@@ -239,3 +296,22 @@ private fun DailyUsage.isAtLeastAsFreshAs(other: DailyUsage): Boolean =
 
 private fun retryDelayMillis(attempt: Long): Long =
     (500L shl attempt.coerceAtMost(5).toInt()).coerceAtMost(15_000L)
+
+private suspend fun <Model> decodeOrDelete(
+    kind: String,
+    entityId: String,
+    delete: suspend () -> Unit,
+    decode: () -> Model,
+): Model? = try {
+    decode()
+} catch (error: Exception) {
+    Log.w(LOG_TAG, "Removed invalid $kind $entityId", error)
+    try {
+        delete()
+    } catch (deleteError: Exception) {
+        Log.w(LOG_TAG, "Could not remove invalid $kind $entityId", deleteError)
+    }
+    null
+}
+
+private const val LOG_TAG = "NoScrollStorage"

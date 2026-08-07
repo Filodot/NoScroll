@@ -28,10 +28,12 @@ class DashboardScreenTest {
 
         composeRule.onNodeWithText("До паузы: 03:42").assertIsDisplayed()
         composeRule.onNodeWithText("Shorts сегодня: 12 мин").assertIsDisplayed()
-        composeRule.onNodeWithText("Использовано 18 из 45 мин").assertIsDisplayed()
         composeRule.onNode(
             hasContentDescription("Интервал Shorts: использовано 01:18 из 05:00"),
         ).assertIsDisplayed()
+        composeRule.onNodeWithText("Использовано 18 из 45 мин")
+            .performScrollTo()
+            .assertIsDisplayed()
     }
 
     @Test
@@ -63,7 +65,9 @@ class DashboardScreenTest {
             onAction = { lastAction = it },
         )
 
-        composeRule.onNodeWithText("Защита не работает").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Защита не работает")
+            .onFirst()
+            .assertIsDisplayed()
         composeRule.onNodeWithText("Включить Accessibility").performClick()
 
         composeRule.runOnIdle {
@@ -96,8 +100,10 @@ class DashboardScreenTest {
 
         composeRule.onNodeWithText("Дневной лимит приостановлен").assertIsDisplayed()
         composeRule.onNodeWithText("Паузы в Shorts продолжают работать").assertIsDisplayed()
-        composeRule.onNodeWithText("Недоступно без доступа к статистике").assertIsDisplayed()
         composeRule.onNodeWithText("До паузы: 03:42").assertIsDisplayed()
+        composeRule.onNodeWithText("Недоступно без доступа к статистике")
+            .performScrollTo()
+            .assertIsDisplayed()
     }
 
     @Test
@@ -152,10 +158,16 @@ class DashboardScreenTest {
             normalState().copy(
                 shorts = ShortsLimitUiState.Disabled,
                 daily = DailyLimitUiState.Disabled,
+                youtube = AppLimitUiState.Disabled,
+                instagram = AppLimitUiState.Disabled,
+                pinterest = AppLimitUiState.Disabled,
+                chrome = AppLimitUiState.Disabled,
             ),
         )
 
-        composeRule.onNodeWithText("Ограничения уже выключены").assertIsDisplayed()
+        composeRule.onNodeWithText("Ограничения уже выключены")
+            .performScrollTo()
+            .assertIsDisplayed()
         composeRule.onNode(isToggleable()).assertIsNotEnabled()
         composeRule.onNodeWithText("Защита не работает").assertDoesNotExist()
     }

@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import com.filodot.noscroll.core.learning.content.StaticLearningCatalog
 import com.filodot.noscroll.core.learning.model.LearningCourseContent
@@ -31,15 +32,26 @@ class LearningScreenTest {
         composeRule.onNodeWithText("Начать следующий урок").performClick()
         composeRule.onNodeWithText("Материал урока").assertIsDisplayed()
         composeRule.onNodeWithText("age = 18").assertDoesNotExist()
-        composeRule.onNodeWithText("Перейти к заданиям").performClick()
+        composeRule.onNodeWithText("Перейти к заданиям").performScrollTo().performClick()
         composeRule.onNodeWithText("age = 18").performClick()
-        composeRule.onNodeWithText("Проверить").assertIsEnabled().performClick()
-        composeRule.onNodeWithText("Следующее задание").performClick()
-        composeRule.onNodeWithText("Проверить").assertIsEnabled().performClick()
-        composeRule.onNodeWithText("Следующее задание").performClick()
-        composeRule.onNodeWithText("Что выведет код?").performTextInput("8")
-        composeRule.onNodeWithText("Проверить").assertIsEnabled().performClick()
-        composeRule.onNodeWithText("Завершить урок").performClick()
+        composeRule.onNodeWithText("Проверить")
+            .performScrollTo()
+            .assertIsEnabled()
+            .performClick()
+        composeRule.onNodeWithText("Следующее задание").performScrollTo().performClick()
+        composeRule.onNodeWithText("Проверить")
+            .performScrollTo()
+            .assertIsEnabled()
+            .performClick()
+        composeRule.onNodeWithText("Следующее задание").performScrollTo().performClick()
+        composeRule.onNodeWithText("Что выведет код?")
+            .performScrollTo()
+            .performTextInput("8")
+        composeRule.onNodeWithText("Проверить")
+            .performScrollTo()
+            .assertIsEnabled()
+            .performClick()
+        composeRule.onNodeWithText("Завершить урок").performScrollTo().performClick()
 
         composeRule.onNodeWithText("Урок завершён").assertIsDisplayed()
     }
@@ -55,12 +67,15 @@ class LearningScreenTest {
 
         composeRule.onNodeWithText("Открыть курс").performClick()
         composeRule.onNodeWithText("Начать следующий урок").performClick()
-        composeRule.onNodeWithText("Перейти к заданиям").performClick()
-        composeRule.onNodeWithText("Задание выглядит некорректным").performClick()
+        composeRule.onNodeWithText("Перейти к заданиям").performScrollTo().performClick()
+        composeRule.onNodeWithText("Задание выглядит некорректным")
+            .performScrollTo()
+            .performClick()
 
         composeRule.onNodeWithText("Подозрительное задание заменено без штрафа")
             .assertIsDisplayed()
         composeRule.onNodeWithText("Расположите действия программы в порядке выполнения.")
+            .performScrollTo()
             .assertIsDisplayed()
     }
 

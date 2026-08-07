@@ -14,13 +14,18 @@ android {
         applicationId = "com.filodot.noscroll"
         minSdk = 26
         targetSdk = 37
-        versionCode = 15
-        versionName = "0.10.0"
+        versionCode = 16
+        versionName = "0.10.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
+        debug {
+            // Keep connected UI tests isolated from the release app and its private data.
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             isMinifyEnabled = false
             // Keep upgrades compatible with the 0.6.x APKs already distributed from this repo.

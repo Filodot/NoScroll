@@ -49,7 +49,10 @@ class DataStoreSettingsRepository(
                 .catch { error ->
                     if (error is IOException) emit(emptyPreferences()) else throw error
                 }
-                .map(::preferencesToSettings)
+                .map { preferences ->
+                    runCatching { preferencesToSettings(preferences) }
+                        .getOrElse { UserSettings() }
+                }
                 .onEach { mutableInitialized.value = true }
                 .collect(mutableSettings::emit)
         }

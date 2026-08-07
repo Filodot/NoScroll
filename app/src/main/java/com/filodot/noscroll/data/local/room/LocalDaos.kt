@@ -17,6 +17,9 @@ interface DailyUsageDao {
 
     @Upsert
     suspend fun upsert(entity: DailyUsageEntity)
+
+    @Query("DELETE FROM daily_usage WHERE local_date = :localDate")
+    suspend fun delete(localDate: String): Int
 }
 
 @Dao
@@ -29,6 +32,9 @@ interface GateCycleDao {
 
     @Upsert
     suspend fun upsert(entity: GateCycleEntity)
+
+    @Query("DELETE FROM gate_cycles WHERE id = :id")
+    suspend fun delete(id: String): Int
 }
 
 @Dao
@@ -296,6 +302,9 @@ interface EmergencyEventDao {
 
     @Query("DELETE FROM emergency_events WHERE deactivated_at_epoch_millis IS NOT NULL")
     suspend fun deleteClosedHistory(): Int
+
+    @Query("DELETE FROM emergency_events WHERE id = :id")
+    suspend fun delete(id: String): Int
 }
 
 @Dao

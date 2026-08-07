@@ -2,7 +2,6 @@ package com.filodot.noscroll.feature.limits
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -11,7 +10,6 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasStateDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -30,8 +28,11 @@ class LimitsScreenTest {
     fun balancedPresetIsSelectedAndValuesHaveContextualTalkBackText() {
         composeRule.setLimits(LimitsUiState())
 
-        composeRule.onNode(hasText("Сбалансированный") and hasClickAction()).assertIsSelected()
-        composeRule.onAllNodesWithText("Рекомендуем").assertCountEquals(3)
+        composeRule.onNode(
+            hasText("Сбалансированный") and
+                hasText("Рекомендуем") and
+                hasClickAction(),
+        ).assertIsSelected()
         composeRule.onNode(hasStateDescription("5 минут, диапазон от 1 до 30"))
             .assertIsDisplayed()
         composeRule.onNode(hasStateDescription("45 минут, диапазон от 10 до 240"))

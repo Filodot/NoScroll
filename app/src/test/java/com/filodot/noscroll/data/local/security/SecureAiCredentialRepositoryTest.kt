@@ -55,6 +55,25 @@ class SecureAiCredentialRepositoryTest {
         assertNull(repository.getApiKey(AiProviderId.GROQ))
     }
 
+    @Test
+    fun `wrong preference types cannot break repository startup`() {
+        context.getSharedPreferences(
+            SecureAiCredentialRepository.PREFERENCES_NAME,
+            0,
+        ).edit()
+            .putLong("enabled_gemini", 1L)
+            .putBoolean("model_gemini", true)
+            .putInt("key_gemini", 42)
+            .commit()
+
+        val repository = SecureAiCredentialRepository(context, ReversingCipher)
+        val gemini = repository.settings.value.first { it.id == AiProviderId.GEMINI }
+
+        assertTrue(gemini.enabled)
+        assertEquals("gemini-3.6-flash", gemini.modelId)
+        assertFalse(gemini.hasApiKey)
+    }
+
     private object ReversingCipher : SecretCipher {
         override fun encrypt(plainText: String): String = plainText.reversed()
 

@@ -1,5 +1,6 @@
 package com.filodot.noscroll.data.local.repository
 
+import android.util.Log
 import com.filodot.noscroll.core.contracts.LearningRepository
 import com.filodot.noscroll.core.learning.model.ConceptMastery
 import com.filodot.noscroll.core.learning.model.LearningAttempt
@@ -20,7 +21,14 @@ class RoomLearningRepository(
     private val validator: LessonQualityValidator = LessonQualityValidator(),
 ) : LearningRepository {
     override val courses: Flow<List<LearningCourse>> = dao.observeCourses()
-        .map { entities -> entities.map { it.toModel() } }
+        .map { entities ->
+            entities.mapNotNull { entity ->
+                runCatching(entity::toModel).getOrElse { error ->
+                    Log.w(LOG_TAG, "Ignored invalid learning_course ${entity.id}", error)
+                    null
+                }
+            }
+        }
 
     override suspend fun saveCourseContent(content: LearningCourseContent) {
         require(content.sources.all { it.courseId == content.course.id })
@@ -38,13 +46,23 @@ class RoomLearningRepository(
     }
 
     override suspend fun getCourseContent(courseId: String): LearningCourseContent? {
-        val course = dao.getCourse(courseId)?.toModel() ?: return null
+        val course = dao.getCourse(courseId)?.let { entity ->
+            runCatching(entity::toModel).getOrNull()
+        } ?: return null
         return LearningCourseContent(
             course = course,
-            sources = dao.getSources(courseId).map { it.toModel() },
-            sourceChunks = dao.getSourceChunks(courseId).map { it.toModel() },
-            curriculumNodes = dao.getCurriculumNodes(courseId).map { it.toModel() },
-            concepts = dao.getConcepts(courseId).map { it.toModel() },
+            sources = dao.getSources(courseId).mapNotNull { entity ->
+                runCatching(entity::toModel).getOrNull()
+            },
+            sourceChunks = dao.getSourceChunks(courseId).mapNotNull { entity ->
+                runCatching(entity::toModel).getOrNull()
+            },
+            curriculumNodes = dao.getCurriculumNodes(courseId).mapNotNull { entity ->
+                runCatching(entity::toModel).getOrNull()
+            },
+            concepts = dao.getConcepts(courseId).mapNotNull { entity ->
+                runCatching(entity::toModel).getOrNull()
+            },
         )
     }
 
@@ -58,22 +76,38 @@ class RoomLearningRepository(
 
     override suspend fun getLesson(lessonId: String): LessonPackage? =
         dao.getLesson(lessonId)?.let { entity ->
-            entity.toModel(dao.getActivities(entity.id))
+            runCatching { entity.toModel(dao.getActivities(entity.id)) }
+                .getOrElse { error ->
+                    Log.w(LOG_TAG, "Ignored invalid lesson_package ${entity.id}", error)
+                    null
+                }
         }
 
     override suspend fun peekNextLesson(courseId: String): LessonPackage? =
         dao.getNextValidatedLesson(courseId)?.let { entity ->
-            entity.toModel(dao.getActivities(entity.id))
+            runCatching { entity.toModel(dao.getActivities(entity.id)) }
+                .getOrElse { error ->
+                    Log.w(LOG_TAG, "Ignored invalid lesson_package ${entity.id}", error)
+                    null
+                }
         }
 
     override suspend fun takeNextLesson(courseId: String): LessonPackage? =
         dao.takeNextValidatedLesson(courseId)?.let { entity ->
-            entity.toModel(dao.getActivities(entity.id))
+            runCatching { entity.toModel(dao.getActivities(entity.id)) }
+                .getOrElse { error ->
+                    Log.w(LOG_TAG, "Ignored invalid lesson_package ${entity.id}", error)
+                    null
+                }
         }
 
     override suspend fun getValidatedLessons(courseId: String): List<LessonPackage> =
-        dao.getValidatedLessons(courseId).map { entity ->
-            entity.toModel(dao.getActivities(entity.id))
+        dao.getValidatedLessons(courseId).mapNotNull { entity ->
+            runCatching { entity.toModel(dao.getActivities(entity.id)) }
+                .getOrElse { error ->
+                    Log.w(LOG_TAG, "Ignored invalid lesson_package ${entity.id}", error)
+                    null
+                }
         }
 
     override fun observeValidatedLessonCount(courseId: String): Flow<Int> =
@@ -84,16 +118,24 @@ class RoomLearningRepository(
     }
 
     override suspend fun getAttempts(courseId: String): List<LearningAttempt> =
-        dao.getAttempts(courseId).map { it.toModel() }
+        dao.getAttempts(courseId).mapNotNull { entity ->
+            runCatching(entity::toModel).getOrNull()
+        }
 
     override suspend fun saveMastery(mastery: ConceptMastery) {
         dao.upsertMastery(mastery.toEntity())
     }
 
     override suspend fun getMastery(courseId: String): List<ConceptMastery> =
-        dao.getMastery(courseId).map { it.toModel() }
+        dao.getMastery(courseId).mapNotNull { entity ->
+            runCatching(entity::toModel).getOrNull()
+        }
 
     override suspend fun deleteCourse(courseId: String) {
         dao.deleteCourse(courseId)
+    }
+
+    private companion object {
+        const val LOG_TAG = "NoScrollLearning"
     }
 }
