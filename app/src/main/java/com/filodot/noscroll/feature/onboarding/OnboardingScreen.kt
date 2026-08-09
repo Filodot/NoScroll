@@ -79,7 +79,10 @@ fun OnboardingScreen(
     onAction: (OnboardingAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(modifier = modifier.fillMaxSize()) {
+    Surface(
+        modifier = modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
         when (state.step) {
             OnboardingStep.WELCOME -> WelcomeScreen(onAction)
             OnboardingStep.PRESET -> PresetScreen(state, onAction)
@@ -368,7 +371,7 @@ private fun OnboardingPage(
         Text(
             text = "Шаг $step из 5",
             style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
+            color = MaterialTheme.colorScheme.tertiary,
         )
         Spacer(Modifier.height(16.dp))
         content()
@@ -394,7 +397,7 @@ private fun Bullet(text: String) {
         Text(
             text = "•",
             modifier = Modifier.padding(end = 12.dp),
-            color = MaterialTheme.colorScheme.primary,
+            color = MaterialTheme.colorScheme.tertiary,
             style = MaterialTheme.typography.bodyLarge,
         )
         Text(text = text, style = MaterialTheme.typography.bodyLarge)
@@ -417,13 +420,15 @@ private fun PresetCard(
                 role = Role.RadioButton,
                 onClick = onClick,
             ),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (selected) {
                 MaterialTheme.colorScheme.primaryContainer
             } else {
-                MaterialTheme.colorScheme.surfaceVariant
+                MaterialTheme.colorScheme.surface
             },
         ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (selected) 2.dp else 1.dp),
         border = if (selected) {
             BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
         } else {

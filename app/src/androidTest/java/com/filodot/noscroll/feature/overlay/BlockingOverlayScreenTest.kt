@@ -179,6 +179,8 @@ class BlockingOverlayScreenTest {
         )
 
         composeRule.onNodeWithText("Мини-урок").assertIsDisplayed()
+        composeRule.onNodeWithText("Материал").assertIsDisplayed()
+        composeRule.onNodeWithText("Задание").assertIsDisplayed()
         composeRule.onNodeWithText("Как работает присваивание?").assertDoesNotExist()
         composeRule.onNodeWithText("Перейти к заданию").performClick()
         composeRule.runOnIdle {

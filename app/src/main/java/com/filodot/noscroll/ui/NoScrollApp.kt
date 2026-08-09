@@ -3,11 +3,15 @@ package com.filodot.noscroll.ui
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -20,9 +24,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -1157,21 +1167,33 @@ private fun MainDestinationScaffold(
     content: @Composable () -> Unit,
 ) {
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                containerColor = MaterialTheme.colorScheme.surface,
+                tonalElevation = 0.dp,
+            ) {
                 AppRoute.topLevel.forEach { destination ->
                     NavigationBarItem(
                         selected = selectedRoute == destination,
                         onClick = { navController.navigateTopLevel(destination) },
                         icon = {
-                            Text(
-                                text = destination.marker,
+                            AppNavigationIcon(
+                                destination = destination,
+                                selected = selectedRoute == destination,
                                 modifier = Modifier.semantics {
                                     contentDescription = destination.label
                                 },
                             )
                         },
                         label = { Text(destination.label) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
                     )
                 }
             }
@@ -1183,6 +1205,101 @@ private fun MainDestinationScaffold(
                 .padding(contentPadding),
         ) {
             content()
+        }
+    }
+}
+
+@Composable
+private fun AppNavigationIcon(
+    destination: AppRoute,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val color = if (selected) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Canvas(modifier = modifier.size(24.dp)) {
+        val stroke = 2.dp.toPx()
+        val center = Offset(size.width / 2f, size.height / 2f)
+        when (destination) {
+            AppRoute.Dashboard -> {
+                drawLine(
+                    color,
+                    Offset(size.width * .14f, size.height * .48f),
+                    Offset(size.width * .5f, size.height * .17f),
+                    stroke,
+                    StrokeCap.Round,
+                )
+                drawLine(
+                    color,
+                    Offset(size.width * .5f, size.height * .17f),
+                    Offset(size.width * .86f, size.height * .48f),
+                    stroke,
+                    StrokeCap.Round,
+                )
+                drawRoundRect(
+                    color = color,
+                    topLeft = Offset(size.width * .25f, size.height * .43f),
+                    size = Size(size.width * .5f, size.height * .43f),
+                    cornerRadius = CornerRadius(2.dp.toPx()),
+                    style = Stroke(stroke),
+                )
+            }
+
+            AppRoute.Limits -> {
+                drawCircle(color, radius = size.minDimension * .39f, style = Stroke(stroke))
+                drawLine(color, center, Offset(center.x, size.height * .28f), stroke, StrokeCap.Round)
+                drawLine(color, center, Offset(size.width * .68f, size.height * .58f), stroke, StrokeCap.Round)
+            }
+
+            AppRoute.Tasks -> {
+                drawRoundRect(
+                    color = color,
+                    topLeft = Offset(size.width * .22f, size.height * .16f),
+                    size = Size(size.width * .56f, size.height * .7f),
+                    cornerRadius = CornerRadius(3.dp.toPx()),
+                    style = Stroke(stroke),
+                )
+                drawLine(color, Offset(size.width * .36f, size.height * .4f), Offset(size.width * .65f, size.height * .4f), stroke, StrokeCap.Round)
+                drawLine(color, Offset(size.width * .36f, size.height * .6f), Offset(size.width * .65f, size.height * .6f), stroke, StrokeCap.Round)
+            }
+
+            AppRoute.Learning -> {
+                drawLine(color, Offset(center.x, size.height * .22f), Offset(center.x, size.height * .82f), stroke, StrokeCap.Round)
+                drawLine(color, Offset(size.width * .12f, size.height * .27f), Offset(size.width * .42f, size.height * .35f), stroke, StrokeCap.Round)
+                drawLine(color, Offset(size.width * .12f, size.height * .27f), Offset(size.width * .12f, size.height * .72f), stroke, StrokeCap.Round)
+                drawLine(color, Offset(size.width * .12f, size.height * .72f), Offset(size.width * .42f, size.height * .8f), stroke, StrokeCap.Round)
+                drawLine(color, Offset(size.width * .88f, size.height * .27f), Offset(size.width * .58f, size.height * .35f), stroke, StrokeCap.Round)
+                drawLine(color, Offset(size.width * .88f, size.height * .27f), Offset(size.width * .88f, size.height * .72f), stroke, StrokeCap.Round)
+                drawLine(color, Offset(size.width * .88f, size.height * .72f), Offset(size.width * .58f, size.height * .8f), stroke, StrokeCap.Round)
+            }
+
+            AppRoute.Settings -> {
+                drawCircle(color, radius = size.minDimension * .18f, style = Stroke(stroke))
+                drawCircle(color, radius = size.minDimension * .36f, style = Stroke(stroke))
+                repeat(8) { index ->
+                    val angle = Math.toRadians(index * 45.0)
+                    val inner = size.minDimension * .39f
+                    val outer = size.minDimension * .47f
+                    drawLine(
+                        color,
+                        Offset(
+                            center.x + kotlin.math.cos(angle).toFloat() * inner,
+                            center.y + kotlin.math.sin(angle).toFloat() * inner,
+                        ),
+                        Offset(
+                            center.x + kotlin.math.cos(angle).toFloat() * outer,
+                            center.y + kotlin.math.sin(angle).toFloat() * outer,
+                        ),
+                        stroke,
+                        StrokeCap.Round,
+                    )
+                }
+            }
+
+            else -> drawCircle(color, radius = size.minDimension * .3f, style = Stroke(stroke))
         }
     }
 }

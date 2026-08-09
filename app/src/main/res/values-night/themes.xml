@@ -3,7 +3,7 @@
     <style name="Theme.NoScroll" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:statusBarColor">#17130D</item>
-        <item name="android:navigationBarColor">#17130D</item>
+        <item name="android:statusBarColor">#171510</item>
+        <item name="android:navigationBarColor">#201E19</item>
     </style>
 </resources>

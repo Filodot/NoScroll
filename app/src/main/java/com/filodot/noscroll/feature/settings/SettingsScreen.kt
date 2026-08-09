@@ -36,7 +36,10 @@ fun SettingsScreen(
     onAction: (SettingsAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(modifier = modifier.fillMaxSize()) {
+    Surface(
+        modifier = modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -54,6 +57,12 @@ fun SettingsScreen(
                     text = "Настройки",
                     modifier = Modifier.semantics { heading() },
                     style = MaterialTheme.typography.headlineLarge,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "Доступы, приватность и состояние защиты — без лишних переключателей.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyLarge,
                 )
                 Spacer(Modifier.height(24.dp))
                 SectionTitle("Системный доступ")
@@ -108,6 +117,8 @@ private fun SystemAccessCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             AccessRow(
@@ -196,7 +207,7 @@ private fun AccessRow(
             Text(
                 text = statusLabel,
                 color = if (status == SystemAccessUiStatus.ENABLED) {
-                    MaterialTheme.colorScheme.primary
+                    MaterialTheme.colorScheme.tertiary
                 } else {
                     MaterialTheme.colorScheme.error
                 },
@@ -239,7 +250,7 @@ private fun DiagnosticsCard(state: SettingsUiState) {
             ) {
                 MaterialTheme.colorScheme.errorContainer
             } else {
-                MaterialTheme.colorScheme.surfaceVariant
+                MaterialTheme.colorScheme.tertiaryContainer
             },
         ),
     ) {
@@ -288,6 +299,8 @@ private fun ActionCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Text(text = title, style = MaterialTheme.typography.titleLarge)

@@ -28,6 +28,7 @@ class LearningScreenTest {
             }
         }
 
+        composeRule.onNodeWithText("↓ Офлайн").assertIsDisplayed()
         composeRule.onNodeWithText("Открыть курс").performClick()
         composeRule.onNodeWithText("Начать следующий урок").performClick()
         composeRule.onNodeWithText("Материал урока").assertIsDisplayed()

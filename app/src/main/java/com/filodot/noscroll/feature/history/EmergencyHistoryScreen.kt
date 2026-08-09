@@ -56,7 +56,10 @@ fun EmergencyHistoryScreen(
     onAction: (EmergencyHistoryAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(modifier = modifier.fillMaxSize()) {
+    Surface(
+        modifier = modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()

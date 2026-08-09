@@ -78,7 +78,7 @@ fun BlockingOverlayScreen(
     BackHandler { onAction(BlockingOverlayAction.SystemBack) }
     Surface(
         modifier = modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.surface,
+        color = MaterialTheme.colorScheme.background,
     ) {
         val emergencyForm = state.emergencyForm
         if (emergencyForm != null) {
@@ -95,6 +95,7 @@ private fun EnforcementScreen(
     onAction: (BlockingOverlayAction) -> Unit,
 ) {
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
             EscapeActions(
                 enforcement = enforcement,
@@ -146,6 +147,8 @@ private fun TaskGateContent(
     onAction: (BlockingOverlayAction) -> Unit,
 ) {
     val appLabel = task.target.label()
+    TaskStageIndicator(task)
+    Spacer(Modifier.height(22.dp))
     OverlayTitle(
         if (task.trigger == TaskTrigger.ENTRY) "Вход в $appLabel" else "Пора сделать паузу",
     )
@@ -196,9 +199,11 @@ private fun TaskGateContent(
     } else if (task.showingLearningMaterial && !task.learningMaterial.isNullOrBlank()) {
         Card(
             modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(22.dp),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                containerColor = MaterialTheme.colorScheme.surface,
             ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         ) {
             Column(
                 modifier = Modifier.padding(20.dp),
@@ -218,7 +223,7 @@ private fun TaskGateContent(
                     } else {
                         "Сначала изучите материал. Следующий экран проверит его понимание."
                     },
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(task.learningMaterial, style = MaterialTheme.typography.bodyLarge)
                 Button(
@@ -378,6 +383,81 @@ private fun TaskGateContent(
             ) {
                 Text("Другое движение")
             }
+        }
+    }
+}
+
+@Composable
+private fun TaskStageIndicator(task: EnforcementUiState.TaskGate) {
+    val hasMaterial = !task.learningMaterial.isNullOrBlank()
+    val materialStage = task.showingLearningMaterial && hasMaterial
+    val completed = task.answerStatus == TaskAnswerStatus.CORRECT
+    val activeStep = if (materialStage) 1 else 2
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            StagePill(
+                number = "1",
+                label = if (hasMaterial) "Материал" else "Пауза",
+                active = activeStep == 1,
+                completed = activeStep > 1 || completed,
+                modifier = Modifier.weight(1f),
+            )
+            StagePill(
+                number = "2",
+                label = if (completed) "Готово" else "Задание",
+                active = activeStep == 2,
+                completed = completed,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Text(
+            if (materialStage) {
+                "Сначала спокойно ознакомьтесь с материалом"
+            } else if (completed) {
+                "Пауза завершена"
+            } else if (!hasMaterial) {
+                "Выполните короткое задание, чтобы продолжить"
+            } else {
+                "Теперь проверьте понимание"
+            },
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+@Composable
+private fun StagePill(
+    number: String,
+    label: String,
+    active: Boolean,
+    completed: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val container = when {
+        completed -> MaterialTheme.colorScheme.tertiaryContainer
+        active -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(14.dp),
+        color = container,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(if (completed) "✓" else number, style = MaterialTheme.typography.labelLarge)
+            Text(label, style = MaterialTheme.typography.labelMedium)
         }
     }
 }

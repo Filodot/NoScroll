@@ -1,6 +1,7 @@
 package com.filodot.noscroll.feature.tasks
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -78,31 +80,39 @@ fun TaskSettingsScreen(
     onAction: (TaskSettingsAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+    Surface(
+        modifier = modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
     ) {
-        Text(
-            text = "Задания",
-            modifier = Modifier.semantics { heading() },
-            style = MaterialTheme.typography.headlineLarge,
-        )
-        Text(
-            text = "Сложность зависит от общей нагрузки в контролируемых приложениях, а тип " +
-                "задания выбирается из включённых вариантов.",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodyLarge,
-        )
-        LoadCard(state)
-        PrepareAccessCard(state.enabledTargets, onAction)
-        DifficultyCard(state, onAction)
-        TaskTypesCard(state, onAction)
-        LearningCoursesCard(state, onAction)
-        CustomPresetsCard(state.presets, onAction)
-        Spacer(Modifier.height(16.dp))
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 600.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Text(
+                    text = "Задания",
+                    modifier = Modifier.semantics { heading() },
+                    style = MaterialTheme.typography.headlineLarge,
+                )
+                Text(
+                    text = "Выберите, чем заменить автоматический скролл. Сложность мягко " +
+                        "растёт вместе с экранным временем.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                LoadCard(state)
+                PrepareAccessCard(state.enabledTargets, onAction)
+                DifficultyCard(state, onAction)
+                TaskTypesCard(state, onAction)
+                LearningCoursesCard(state, onAction)
+                CustomPresetsCard(state.presets, onAction)
+                Spacer(Modifier.height(16.dp))
+            }
+        }
     }
 }
 
@@ -111,7 +121,7 @@ private fun LoadCard(state: TaskSettingsUiState) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
     ) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Текущая нагрузка", style = MaterialTheme.typography.labelLarge)
@@ -127,7 +137,7 @@ private fun LoadCard(state: TaskSettingsUiState) {
             Text(
                 "Нагрузка растёт во время YouTube, Instagram, Pinterest и Chrome, не " +
                     "сбрасывается в полночь и постепенно уменьшается во время перерыва.",
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
             )
         }
     }
@@ -138,7 +148,12 @@ private fun PrepareAccessCard(
     enabledTargets: Set<TaskTarget>,
     onAction: (TaskSettingsAction) -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+    ) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SectionTitle("Подготовить доступ")
             Text("Решите входное задание до открытия отвлекающего приложения.")
@@ -176,7 +191,12 @@ private fun DifficultyCard(
     state: TaskSettingsUiState,
     onAction: (TaskSettingsAction) -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+    ) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             SectionTitle("Шкала сложности")
             NumberSetting(
@@ -251,7 +271,12 @@ private fun TaskTypesCard(
     state: TaskSettingsUiState,
     onAction: (TaskSettingsAction) -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+    ) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SectionTitle("Типы заданий")
             TaskType.entries.forEach { type ->
@@ -292,7 +317,12 @@ private fun LearningCoursesCard(
     onAction: (TaskSettingsAction) -> Unit,
 ) {
     if (TaskType.LEARNING !in state.enabledTypes) return
-    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+    ) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SectionTitle("Курсы для пауз")
             Text(
@@ -340,7 +370,12 @@ private fun CustomPresetsCard(
 ) {
     var title by remember { mutableStateOf("") }
     var instruction by remember { mutableStateOf("") }
-    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+    ) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SectionTitle("Свои задания")
             OutlinedTextField(

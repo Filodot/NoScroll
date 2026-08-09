@@ -99,9 +99,10 @@ class DashboardScreenTest {
             .assertIsDisplayed()
         composeRule.onNodeWithText("58 мин").assertIsDisplayed()
         composeRule.onNodeWithText("включая Shorts 12 мин").assertIsDisplayed()
-        composeRule.onNodeWithText("Экранное время снижается на 25%")
-            .performScrollTo()
+        composeRule.onNode(hasContentDescription("Экранное время снижается на 25%"))
             .assertIsDisplayed()
+        composeRule.onNodeWithText("↓ 25% за неделю").assertIsDisplayed()
+        composeRule.onNodeWithText("По приложениям").assertIsDisplayed()
     }
 
     @Test

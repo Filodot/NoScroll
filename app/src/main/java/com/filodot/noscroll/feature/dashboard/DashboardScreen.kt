@@ -1,8 +1,11 @@
 package com.filodot.noscroll.feature.dashboard
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,11 +35,16 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -51,7 +60,10 @@ fun DashboardScreen(
     onAction: (DashboardAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(modifier = modifier.fillMaxSize()) {
+    Surface(
+        modifier = modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -65,10 +77,24 @@ fun DashboardScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp, vertical = 16.dp),
             ) {
-                DashboardHeader(state.dateLabel, onAction)
-                Spacer(Modifier.height(12.dp))
-                ProtectionStatusChip(state.protectionStatus)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ProtectionStatusChip(state.protectionStatus)
+                    TextButton(
+                        onClick = { onAction(DashboardAction.ShowHelp) },
+                        modifier = Modifier.heightIn(min = 48.dp),
+                    ) {
+                        Text("Справка")
+                    }
+                }
+                Spacer(Modifier.height(22.dp))
+                DashboardHeader(state.dateLabel)
                 PriorityStateBanner(state, onAction)
+                Spacer(Modifier.height(20.dp))
+                UsageStatisticsCard(state.statistics)
                 Spacer(Modifier.height(16.dp))
                 FocusModeCard(
                     focus = state.focusMode,
@@ -76,9 +102,13 @@ fun DashboardScreen(
                     emergencyActive = state.emergency.active,
                     onAction = onAction,
                 )
-                Spacer(Modifier.height(16.dp))
-                UsageStatisticsCard(state.statistics)
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(28.dp))
+                Text(
+                    "Текущие интервалы",
+                    modifier = Modifier.semantics { heading() },
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+                Spacer(Modifier.height(12.dp))
                 ShortsCard(
                     shorts = state.shorts,
                     paused = state.emergency.active,
@@ -133,101 +163,38 @@ fun DashboardScreen(
 @Composable
 private fun UsageStatisticsCard(statistics: UsageStatisticsUiState) {
     DashboardCard(title = "Статистика использования") {
-        Text("Сегодня", style = MaterialTheme.typography.labelLarge)
-        Text(
-            formatUsageDuration(statistics.todayTotalSeconds),
-            style = MaterialTheme.typography.headlineMedium,
-        )
-        Spacer(Modifier.height(10.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Сегодня", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    formatUsageDuration(statistics.todayTotalSeconds),
+                    style = MaterialTheme.typography.displaySmall,
+                )
+                Spacer(Modifier.height(6.dp))
+                UsageTrendLabel(statistics)
+            }
+            CalmPlantIllustration()
+        }
+        Spacer(Modifier.height(20.dp))
+        Text("Последние 7 дней", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(12.dp))
+        WeeklyUsageChart(statistics.days)
+        Spacer(Modifier.height(20.dp))
+        Text("По приложениям", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(8.dp))
         UsageBreakdownRow("YouTube", statistics.todayYoutubeSeconds) {
-            if (statistics.todayShortsSeconds > 0) {
-                "включая Shorts ${formatUsageDuration(statistics.todayShortsSeconds)}"
-            } else {
-                null
+            statistics.todayShortsSeconds.takeIf { it > 0 }?.let {
+                "включая Shorts ${formatUsageDuration(it)}"
             }
         }
         UsageBreakdownRow("Instagram", statistics.todayInstagramSeconds)
         UsageBreakdownRow("Pinterest", statistics.todayPinterestSeconds)
         UsageBreakdownRow("Chrome", statistics.todayChromeSeconds)
-
-        Spacer(Modifier.height(16.dp))
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp),
-            color = when (statistics.trend) {
-                UsageTrendDirection.IMPROVING -> MaterialTheme.colorScheme.primaryContainer
-                UsageTrendDirection.INCREASING -> MaterialTheme.colorScheme.errorContainer
-                UsageTrendDirection.STABLE,
-                UsageTrendDirection.NOT_ENOUGH_DATA,
-                -> MaterialTheme.colorScheme.surfaceVariant
-            },
-        ) {
-            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = when (statistics.trend) {
-                        UsageTrendDirection.IMPROVING ->
-                            "Экранное время снижается на " +
-                                "${absoluteChangePercent(statistics.changePercent)}%"
-                        UsageTrendDirection.INCREASING -> statistics.changePercent?.let {
-                            "Экранное время выросло на ${absoluteChangePercent(it)}%"
-                        } ?: "Экранное время выросло"
-                        UsageTrendDirection.STABLE -> "Экранное время почти не изменилось"
-                        UsageTrendDirection.NOT_ENOUGH_DATA -> "Собираем базу для сравнения"
-                    },
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                val recentAverage = statistics.recentAverageSeconds
-                if (recentAverage != null) {
-                    Text(
-                        "Среднее за недавние дни: ${formatUsageDuration(recentAverage)}",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                } else {
-                    Text(
-                        "Тренд появится после нескольких дней использования в двух периодах.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(16.dp))
-        Text("Последние 7 дней", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(8.dp))
-        val maxSeconds = statistics.days.filter(UsageDayUi::observed)
-            .maxOfOrNull(UsageDayUi::totalSeconds)
-            ?.coerceAtLeast(1)
-            ?: 1
-        statistics.days.forEach { day ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(day.label, modifier = Modifier.widthIn(min = 72.dp))
-                if (day.observed) {
-                    LinearProgressIndicator(
-                        progress = {
-                            (day.totalSeconds.toDouble() / maxSeconds)
-                                .coerceIn(0.0, 1.0)
-                                .toFloat()
-                        },
-                        modifier = Modifier.weight(1f).height(8.dp),
-                    )
-                    Text(
-                        formatUsageDuration(day.totalSeconds),
-                        modifier = Modifier.widthIn(min = 68.dp),
-                    )
-                } else {
-                    Text(
-                        "Нет данных",
-                        modifier = Modifier.weight(1f),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-        }
+        Spacer(Modifier.height(10.dp))
         Text(
             "Shorts входят во время YouTube и не прибавляются второй раз.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -247,6 +214,7 @@ private fun UsageBreakdownRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        AppBadge(label)
         Text(label, modifier = Modifier.weight(1f))
         Column(horizontalAlignment = Alignment.End) {
             Text(formatUsageDuration(seconds))
@@ -255,6 +223,166 @@ private fun UsageBreakdownRow(
                     value,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun UsageTrendLabel(statistics: UsageStatisticsUiState) {
+    val text = when (statistics.trend) {
+        UsageTrendDirection.IMPROVING ->
+            "↓ ${absoluteChangePercent(statistics.changePercent)}% за неделю"
+        UsageTrendDirection.INCREASING -> statistics.changePercent?.let {
+            "↑ ${absoluteChangePercent(it)}% за неделю"
+        } ?: "Экранное время выросло"
+        UsageTrendDirection.STABLE -> "Почти без изменений"
+        UsageTrendDirection.NOT_ENOUGH_DATA -> "Собираем данные для сравнения"
+    }
+    val fullDescription = when (statistics.trend) {
+        UsageTrendDirection.IMPROVING ->
+            "Экранное время снижается на ${absoluteChangePercent(statistics.changePercent)}%"
+        UsageTrendDirection.INCREASING -> statistics.changePercent?.let {
+            "Экранное время выросло на ${absoluteChangePercent(it)}%"
+        } ?: "Экранное время выросло"
+        UsageTrendDirection.STABLE -> "Экранное время почти не изменилось"
+        UsageTrendDirection.NOT_ENOUGH_DATA -> "Собираем базу для сравнения"
+    }
+    Text(
+        text = text,
+        color = when (statistics.trend) {
+            UsageTrendDirection.IMPROVING -> MaterialTheme.colorScheme.tertiary
+            UsageTrendDirection.INCREASING -> MaterialTheme.colorScheme.error
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        modifier = Modifier.semantics { contentDescription = fullDescription },
+        style = MaterialTheme.typography.titleMedium,
+    )
+}
+
+@Composable
+private fun WeeklyUsageChart(days: List<UsageDayUi>) {
+    val maxSeconds = days.filter(UsageDayUi::observed)
+        .maxOfOrNull(UsageDayUi::totalSeconds)
+        ?.coerceAtLeast(1)
+        ?: 1
+    val displayDays = days.asReversed()
+    Row(
+        modifier = Modifier.fillMaxWidth().height(94.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        displayDays.forEachIndexed { index, day ->
+            val fraction = if (day.observed) {
+                (day.totalSeconds.toFloat() / maxSeconds).coerceIn(.07f, 1f)
+            } else {
+                .04f
+            }
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Bottom,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .semantics {
+                        contentDescription = if (day.observed) {
+                            "${day.label}: ${formatUsageDuration(day.totalSeconds)}"
+                        } else {
+                            "${day.label}: нет данных"
+                        }
+                    },
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(18.dp)
+                        .weight(1f),
+                    contentAlignment = Alignment.BottomCenter,
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .fillMaxHeight(fraction)
+                            .background(
+                                if (index == displayDays.lastIndex) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.tertiary.copy(alpha = .78f)
+                                },
+                                RoundedCornerShape(6.dp),
+                            ),
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(shortDayLabel(day), style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
+}
+
+private fun shortDayLabel(day: UsageDayUi): String = when (day.localDate.dayOfWeek.value) {
+    1 -> "Пн"
+    2 -> "Вт"
+    3 -> "Ср"
+    4 -> "Чт"
+    5 -> "Пт"
+    6 -> "Сб"
+    else -> "Вс"
+}
+
+@Composable
+private fun AppBadge(label: String) {
+    val background = when (label) {
+        "YouTube" -> MaterialTheme.colorScheme.errorContainer
+        "Instagram" -> MaterialTheme.colorScheme.secondaryContainer
+        "Pinterest" -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.tertiaryContainer
+    }
+    Surface(
+        modifier = Modifier.size(36.dp),
+        shape = CircleShape,
+        color = background,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(label.take(1), style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
+@Composable
+private fun CalmPlantIllustration() {
+    val sage = MaterialTheme.colorScheme.tertiary
+    val paleSage = MaterialTheme.colorScheme.tertiaryContainer
+    val amber = MaterialTheme.colorScheme.primaryContainer
+    Canvas(
+        modifier = Modifier
+            .size(width = 108.dp, height = 112.dp)
+            .semantics { contentDescription = "Рост полезных привычек" },
+    ) {
+        drawCircle(amber, radius = 20.dp.toPx(), center = Offset(size.width * .72f, size.height * .2f))
+        drawOval(
+            color = paleSage,
+            topLeft = Offset(size.width * .08f, size.height * .69f),
+            size = Size(size.width * .84f, size.height * .23f),
+        )
+        drawLine(
+            color = sage,
+            start = Offset(size.width * .52f, size.height * .8f),
+            end = Offset(size.width * .52f, size.height * .28f),
+            strokeWidth = 3.dp.toPx(),
+            cap = StrokeCap.Round,
+        )
+        listOf(
+            Triple(.48f, .49f, -32f),
+            Triple(.56f, .39f, 30f),
+            Triple(.47f, .62f, -40f),
+            Triple(.57f, .56f, 35f),
+        ).forEach { (x, y, angle) ->
+            rotate(angle, pivot = Offset(size.width * x, size.height * y)) {
+                drawOval(
+                    color = sage.copy(alpha = .84f),
+                    topLeft = Offset(size.width * (x - .14f), size.height * (y - .06f)),
+                    size = Size(size.width * .28f, size.height * .12f),
                 )
             }
         }
@@ -283,7 +411,7 @@ private fun FocusModeCard(
     var showSetup by remember { mutableStateOf(false) }
     var showConfirmation by remember { mutableStateOf(false) }
     var durationMinutes by remember(focus.durationMinutes) {
-        mutableStateOf(focus.durationMinutes)
+        mutableIntStateOf(focus.durationMinutes)
     }
     var selectedPackages by remember(focus.selectedPackages) {
         mutableStateOf(focus.selectedPackages)
@@ -508,31 +636,18 @@ private fun AppIntervalCard(
 @Composable
 private fun DashboardHeader(
     dateLabel: String,
-    onAction: (DashboardAction) -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "Сегодня",
-                modifier = Modifier.semantics { heading() },
-                style = MaterialTheme.typography.headlineLarge,
-            )
-            Text(
-                text = dateLabel,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyLarge,
-            )
-        }
-        TextButton(
-            onClick = { onAction(DashboardAction.ShowHelp) },
-            modifier = Modifier.heightIn(min = 48.dp),
-        ) {
-            Text("Справка")
-        }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = "Сегодня",
+            modifier = Modifier.semantics { heading() },
+            style = MaterialTheme.typography.headlineLarge,
+        )
+        Text(
+            text = dateLabel,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyLarge,
+        )
     }
 }
 
@@ -545,14 +660,14 @@ private fun ProtectionStatusChip(status: DashboardProtectionStatus) {
         DashboardProtectionStatus.ACCESSIBILITY_ERROR -> "Защита не работает"
     }
     val containerColor = when (status) {
-        DashboardProtectionStatus.WORKING -> MaterialTheme.colorScheme.primaryContainer
+        DashboardProtectionStatus.WORKING -> MaterialTheme.colorScheme.tertiaryContainer
         DashboardProtectionStatus.EMERGENCY_BYPASS -> MaterialTheme.colorScheme.tertiaryContainer
         DashboardProtectionStatus.MONITORING_RECOVERING ->
             MaterialTheme.colorScheme.secondaryContainer
         DashboardProtectionStatus.ACCESSIBILITY_ERROR -> MaterialTheme.colorScheme.errorContainer
     }
     val contentColor = when (status) {
-        DashboardProtectionStatus.WORKING -> MaterialTheme.colorScheme.onPrimaryContainer
+        DashboardProtectionStatus.WORKING -> MaterialTheme.colorScheme.onTertiaryContainer
         DashboardProtectionStatus.EMERGENCY_BYPASS -> MaterialTheme.colorScheme.onTertiaryContainer
         DashboardProtectionStatus.MONITORING_RECOVERING ->
             MaterialTheme.colorScheme.onSecondaryContainer
@@ -869,6 +984,8 @@ private fun DashboardCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Text(

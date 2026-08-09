@@ -72,13 +72,17 @@ fun LimitsScreen(
 ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
             if (state.hasUnsavedChanges) {
                 UnsavedActions(onAction)
             }
         },
     ) { contentPadding ->
-        Surface(modifier = Modifier.fillMaxSize()) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+        ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -100,7 +104,8 @@ fun LimitsScreen(
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "Настройте интервалы Shorts и приложений, а также дневной предел YouTube.",
+                        text = "Выберите спокойный ритм: приложение напомнит остановиться, " +
+                            "когда разрешённое время закончится.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyLarge,
                     )
@@ -116,7 +121,7 @@ fun LimitsScreen(
                         )
                     }
                     Spacer(Modifier.height(24.dp))
-                    SectionHeading("Режим")
+                    SectionHeading("Режим пауз")
                     Spacer(Modifier.height(12.dp))
                     PresetPicker(
                         selectedPreset = state.draft.preset,
@@ -299,6 +304,7 @@ private fun PresetOption(
                 MaterialTheme.colorScheme.surfaceVariant
             },
         ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (selected) 2.dp else 0.dp),
         border = if (selected) {
             BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
         } else {
@@ -422,6 +428,8 @@ private fun SettingsCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Row(
@@ -530,7 +538,7 @@ private fun SummaryCard(summary: String) {
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
         ),
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
@@ -538,7 +546,7 @@ private fun SummaryCard(summary: String) {
             Spacer(Modifier.height(10.dp))
             Text(
                 text = summary,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
                 style = MaterialTheme.typography.bodyLarge,
             )
         }

@@ -3,6 +3,7 @@ package com.filodot.noscroll.feature.learning
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,8 +13,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -124,45 +129,53 @@ fun LearningScreen(
     ) {
         scrollState.scrollTo(0)
     }
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
-            .imePadding()
-            .padding(horizontal = 20.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+    Surface(
+        modifier = modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
     ) {
-        if (state.loading) {
-            Text("Загружаем курсы…", style = MaterialTheme.typography.titleLarge)
-        } else {
-            when (state.pane) {
-                LearningPane.COURSES -> CoursesPane(state, onAction)
-                LearningPane.CREATE -> CreateCoursePane(state, onAction)
-                LearningPane.AI_SETTINGS -> AiSettingsPane(state, onAction)
-                LearningPane.COURSE -> CoursePane(state, onAction)
-                LearningPane.LESSON -> LessonPane(state, onAction)
-                LearningPane.COMPLETED -> CompletedPane(state, onAction)
-            }
-        }
-        state.message?.let { message ->
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                ),
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 600.dp)
+                    .verticalScroll(scrollState)
+                    .imePadding()
+                    .padding(horizontal = 20.dp, vertical = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(message)
-                    TextButton(onClick = { onAction(LearningAction.DismissMessage) }) {
-                        Text("Понятно")
+                if (state.loading) {
+                    Text("Загружаем курсы…", style = MaterialTheme.typography.titleLarge)
+                } else {
+                    when (state.pane) {
+                        LearningPane.COURSES -> CoursesPane(state, onAction)
+                        LearningPane.CREATE -> CreateCoursePane(state, onAction)
+                        LearningPane.AI_SETTINGS -> AiSettingsPane(state, onAction)
+                        LearningPane.COURSE -> CoursePane(state, onAction)
+                        LearningPane.LESSON -> LessonPane(state, onAction)
+                        LearningPane.COMPLETED -> CompletedPane(state, onAction)
                     }
                 }
+                state.message?.let { message ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        ),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(message)
+                            TextButton(onClick = { onAction(LearningAction.DismissMessage) }) {
+                                Text("Понятно")
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
             }
         }
-        Spacer(Modifier.height(16.dp))
     }
 }
 
@@ -171,20 +184,42 @@ private fun CoursesPane(
     state: LearningUiState,
     onAction: (LearningAction) -> Unit,
 ) {
-    Heading("Обучение")
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Heading("Обучение", modifier = Modifier.weight(1f))
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.tertiaryContainer,
+        ) {
+            Text(
+                "↓ Офлайн",
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
+    }
     Text(
-        "Курсы постепенно открывают новые темы и возвращают материал к повторению.",
+        "Короткие уроки постепенно открывают новые темы и возвращают материал к повторению.",
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         style = MaterialTheme.typography.bodyLarge,
     )
-    Button(
-        onClick = { onAction(LearningAction.StartCreateCourse) },
-        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-    ) {
-        Text("Создать свой курс")
-    }
     if (state.courses.isEmpty()) {
-        Card(modifier = Modifier.fillMaxWidth()) {
+        Button(
+            onClick = { onAction(LearningAction.StartCreateCourse) },
+            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+        ) {
+            Text("Создать свой курс")
+        }
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        ) {
             Column(
                 modifier = Modifier.padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -200,22 +235,58 @@ private fun CoursesPane(
             }
         }
     } else {
-        state.courses.forEach { course ->
+        state.courses.forEachIndexed { index, course ->
+            Text(
+                if (index == 0) "Текущий курс" else "Следующий курс",
+                style = MaterialTheme.typography.titleMedium,
+            )
             Card(
                 modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(22.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    containerColor = MaterialTheme.colorScheme.surface,
                 ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
             ) {
                 Column(
                     modifier = Modifier.padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Text(course.title, style = MaterialTheme.typography.headlineSmall)
-                    Text(course.description)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Surface(
+                            modifier = Modifier.size(54.dp),
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.tertiaryContainer,
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
+                            ) {
+                                Text("К", style = MaterialTheme.typography.headlineSmall)
+                            }
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(course.title, style = MaterialTheme.typography.headlineSmall)
+                            Text(
+                                course.description,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    LinearProgressIndicator(
+                        progress = { (course.masteryPercent / 100f).coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth().height(8.dp),
+                        color = MaterialTheme.colorScheme.tertiary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    )
                     Text(
-                        "Усвоение: ${course.masteryPercent}% · офлайн-уроков: " +
-                            course.readyLessons,
+                        "Усвоение ${course.masteryPercent}% · готово офлайн: " +
+                            "${course.readyLessons}",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
                     )
                     if (course.aiKnowledgeOnly) AiKnowledgeLabel()
                     Button(
@@ -226,6 +297,12 @@ private fun CoursesPane(
                     }
                 }
             }
+        }
+        OutlinedButton(
+            onClick = { onAction(LearningAction.StartCreateCourse) },
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        ) {
+            Text("Создать свой курс")
         }
         if (state.courses.none { it.id == "course-python-basics" }) {
             OutlinedButton(
@@ -1091,11 +1168,12 @@ private fun CompletedPane(
 @Composable
 private fun Heading(
     text: String,
+    modifier: Modifier = Modifier,
     small: Boolean = false,
 ) {
     Text(
         text = text,
-        modifier = Modifier.semantics { heading() },
+        modifier = modifier.semantics { heading() },
         style = if (small) {
             MaterialTheme.typography.headlineSmall
         } else {
