@@ -289,6 +289,7 @@ class RoomRepositoriesTest {
             100L,
             requireNotNull(database.dailyUsageDao().get(date.toString())).youtubeSeconds,
         )
+        assertEquals(100L, repository.usageHistory.value.first().youtubeSeconds)
         assertEquals(
             100L,
             requireNotNull(database.gateCycleDao().get(GateCycle.CURRENT_GATE_CYCLE_ID))

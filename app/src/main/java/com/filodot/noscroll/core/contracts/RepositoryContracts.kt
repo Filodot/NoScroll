@@ -23,6 +23,8 @@ interface SettingsRepository {
 
 interface UsageRepository {
     val dailyUsage: StateFlow<DailyUsage>
+    /** Newest first; retained locally for trend calculations and daily history. */
+    val usageHistory: StateFlow<List<DailyUsage>>
     val gateCycle: StateFlow<GateCycle>
 
     suspend fun saveDailyUsage(usage: DailyUsage)

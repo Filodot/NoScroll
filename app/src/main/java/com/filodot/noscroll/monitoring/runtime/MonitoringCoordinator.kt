@@ -118,7 +118,20 @@ class MonitoringCoordinator(
     private val taskDifficultyPolicy = TaskDifficultyPolicy()
     private val taskFactory = LocalTaskFactory(wallClock)
     private val learningTaskFactory = LearningGateTaskFactory(learningRepository, wallClock)
-    private val reconstructor = YouTubeForegroundReconstructor()
+    private val foregroundReconstructors = mapOf(
+        AccessibilityAdapterController.YOUTUBE_PACKAGE_NAME to YouTubeForegroundReconstructor(
+            AccessibilityAdapterController.YOUTUBE_PACKAGE_NAME,
+        ),
+        AccessibilityAdapterController.INSTAGRAM_PACKAGE_NAME to YouTubeForegroundReconstructor(
+            AccessibilityAdapterController.INSTAGRAM_PACKAGE_NAME,
+        ),
+        AccessibilityAdapterController.PINTEREST_PACKAGE_NAME to YouTubeForegroundReconstructor(
+            AccessibilityAdapterController.PINTEREST_PACKAGE_NAME,
+        ),
+        AccessibilityAdapterController.CHROME_PACKAGE_NAME to YouTubeForegroundReconstructor(
+            AccessibilityAdapterController.CHROME_PACKAGE_NAME,
+        ),
+    )
     private val entryGate = ShortsEntryGate()
     private val deferredIntervalGate = DeferredIntervalGate()
     private val mutex = Mutex()
@@ -546,13 +559,14 @@ class MonitoringCoordinator(
         val chromeActive = latestDeviceState.screenInteractive &&
             latestDeviceState.deviceUnlocked &&
             latestDeviceState.foregroundPackage == AccessibilityAdapterController.CHROME_PACKAGE_NAME
-        var observedShortsSeconds = 0L
+        var observedDistractingAppSeconds = 0L
 
         if (youtubeActive && deltaMillis > 0) {
             val total = youtubeRemainderMillis.saturatingAdd(deltaMillis)
             val seconds = total / MILLIS_PER_SECOND
             youtubeRemainderMillis = total % MILLIS_PER_SECOND
             if (seconds > 0) {
+                observedDistractingAppSeconds = seconds
                 val emergencyActive = emergencyOverrideActive ||
                     settingsRepository.settings.value.emergencyActive ||
                     emergencyRepository.state.value.isActive
@@ -590,7 +604,6 @@ class MonitoringCoordinator(
             val seconds = total / MILLIS_PER_SECOND
             shortsRemainderMillis = total % MILLIS_PER_SECOND
             if (seconds > 0) {
-                observedShortsSeconds = seconds
                 usage = usage.copy(
                     shortsSeconds = usage.shortsSeconds.saturatingAdd(seconds),
                     updatedAt = now,
@@ -611,6 +624,7 @@ class MonitoringCoordinator(
             val seconds = total / MILLIS_PER_SECOND
             instagramRemainderMillis = total % MILLIS_PER_SECOND
             if (seconds > 0) {
+                observedDistractingAppSeconds = seconds
                 usage = usage.copy(
                     instagramSeconds = usage.instagramSeconds.saturatingAdd(seconds),
                     updatedAt = now,
@@ -631,6 +645,7 @@ class MonitoringCoordinator(
             val seconds = total / MILLIS_PER_SECOND
             pinterestRemainderMillis = total % MILLIS_PER_SECOND
             if (seconds > 0) {
+                observedDistractingAppSeconds = seconds
                 usage = usage.copy(
                     pinterestSeconds = usage.pinterestSeconds.saturatingAdd(seconds),
                     updatedAt = now,
@@ -651,6 +666,7 @@ class MonitoringCoordinator(
             val seconds = total / MILLIS_PER_SECOND
             chromeRemainderMillis = total % MILLIS_PER_SECOND
             if (seconds > 0) {
+                observedDistractingAppSeconds = seconds
                 usage = usage.copy(
                     chromeSeconds = usage.chromeSeconds.saturatingAdd(seconds),
                     updatedAt = now,
@@ -666,13 +682,13 @@ class MonitoringCoordinator(
             chromeRemainderMillis = 0
         }
 
-        if (observedShortsSeconds > 0) {
+        if (observedDistractingAppSeconds > 0) {
             val difficultyState = taskDifficultyPolicy.update(
                 state = cycle.toDifficultyState(),
                 now = now,
-                shortsActive = true,
+                distractingAppActive = true,
                 config = difficultyConfig(),
-                observedActiveSeconds = observedShortsSeconds,
+                observedActiveSeconds = observedDistractingAppSeconds,
             )
             cycle = cycle.withDifficultyState(difficultyState, now)
         }
@@ -958,7 +974,7 @@ class MonitoringCoordinator(
         val effectiveDifficultyState = taskDifficultyPolicy.update(
             state = cycle.toDifficultyState(),
             now = now,
-            shortsActive = false,
+            distractingAppActive = false,
             config = difficultyConfig(),
         )
         val cycleForTask = cycle.withDifficultyState(effectiveDifficultyState, now)
@@ -1056,17 +1072,35 @@ class MonitoringCoordinator(
         val now = wallClock.now()
         val dayStart = now.atZone(zoneId).toLocalDate().atStartOfDay(zoneId).toInstant()
         val events = runCatching { usageStatsSource.eventsBetween(dayStart, now) }.getOrNull() ?: return
-        val reconstructed = reconstructor.reconstruct(events, dayStart, now).totalSeconds
+        val reconstructed = foregroundReconstructors.mapValues { (_, reconstructor) ->
+            reconstructor.reconstruct(events, dayStart, now).totalSeconds
+        }
         mutex.withLock {
             val usage = usageRepository.dailyUsage.value
-            if (usage.localDate == now.atZone(zoneId).toLocalDate() &&
-                reconstructed > usage.youtubeSeconds
-            ) {
-                usageRepository.saveDailyUsage(
-                    usage.copy(youtubeSeconds = reconstructed, updatedAt = now),
+            if (usage.localDate == now.atZone(zoneId).toLocalDate()) {
+                val reconstructedUsage = usage.copy(
+                    youtubeSeconds = maxOf(
+                        usage.youtubeSeconds,
+                        reconstructed[AccessibilityAdapterController.YOUTUBE_PACKAGE_NAME] ?: 0,
+                    ),
+                    instagramSeconds = maxOf(
+                        usage.instagramSeconds,
+                        reconstructed[AccessibilityAdapterController.INSTAGRAM_PACKAGE_NAME] ?: 0,
+                    ),
+                    pinterestSeconds = maxOf(
+                        usage.pinterestSeconds,
+                        reconstructed[AccessibilityAdapterController.PINTEREST_PACKAGE_NAME] ?: 0,
+                    ),
+                    chromeSeconds = maxOf(
+                        usage.chromeSeconds,
+                        reconstructed[AccessibilityAdapterController.CHROME_PACKAGE_NAME] ?: 0,
+                    ),
                 )
+                if (reconstructedUsage == usage) return@withLock
+                val reconciled = reconstructedUsage.copy(updatedAt = now)
+                usageRepository.saveDailyUsage(reconciled)
                 evaluatePolicyLocked(
-                    usage = usage.copy(youtubeSeconds = reconstructed, updatedAt = now),
+                    usage = reconciled,
                     cycle = usageRepository.gateCycle.value,
                     triggeringEvent = null,
                 )

@@ -114,4 +114,32 @@ class LocalTaskFactoryTest {
 
         assertEquals(TaskType.ARITHMETIC, task.type)
     }
+
+    @Test
+    fun `english vocabulary shows level material before a checked question`() {
+        val expectations = listOf(
+            TaskDifficulty.EASY to "Уровень B1",
+            TaskDifficulty.MEDIUM to "Уровень B2",
+            TaskDifficulty.HARD to "Уровень C1",
+        )
+
+        expectations.forEachIndexed { index, (difficulty, levelLabel) ->
+            val task = factory.create(
+                difficulty,
+                TaskTrigger.INTERVAL,
+                TaskTarget.INSTAGRAM,
+                setOf(TaskType.ENGLISH_VOCABULARY),
+                emptyList(),
+                sequence = index,
+            )
+
+            assertEquals(TaskType.ENGLISH_VOCABULARY, task.type)
+            assertEquals(TaskCompletionMode.SINGLE_CHOICE, task.completionMode)
+            assertTrue(task.learningMaterial.orEmpty().startsWith(levelLabel))
+            assertEquals(4, task.learningMaterial.orEmpty().lineSequence().count { it.startsWith("• ") })
+            assertEquals(4, task.choices.size)
+            assertTrue(task.choices.any { it.id == task.expectedChoiceId })
+            assertTrue(task.prompt.isNotBlank())
+        }
+    }
 }

@@ -86,6 +86,7 @@ data class DashboardUiState(
     ),
     val pinterest: AppLimitUiState = AppLimitUiState.Disabled,
     val chrome: AppLimitUiState = AppLimitUiState.Disabled,
+    val statistics: UsageStatisticsUiState = UsageStatisticsUiState(),
     val emergency: EmergencyUiState = EmergencyUiState(),
     val focusMode: FocusModeUiState = FocusModeUiState(),
 ) {

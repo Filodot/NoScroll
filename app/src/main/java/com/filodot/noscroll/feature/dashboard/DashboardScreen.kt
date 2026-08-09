@@ -77,6 +77,8 @@ fun DashboardScreen(
                     onAction = onAction,
                 )
                 Spacer(Modifier.height(16.dp))
+                UsageStatisticsCard(state.statistics)
+                Spacer(Modifier.height(16.dp))
                 ShortsCard(
                     shorts = state.shorts,
                     paused = state.emergency.active,
@@ -125,6 +127,149 @@ fun DashboardScreen(
                 Spacer(Modifier.height(20.dp))
             }
         }
+    }
+}
+
+@Composable
+private fun UsageStatisticsCard(statistics: UsageStatisticsUiState) {
+    DashboardCard(title = "Статистика использования") {
+        Text("Сегодня", style = MaterialTheme.typography.labelLarge)
+        Text(
+            formatUsageDuration(statistics.todayTotalSeconds),
+            style = MaterialTheme.typography.headlineMedium,
+        )
+        Spacer(Modifier.height(10.dp))
+        UsageBreakdownRow("YouTube", statistics.todayYoutubeSeconds) {
+            if (statistics.todayShortsSeconds > 0) {
+                "включая Shorts ${formatUsageDuration(statistics.todayShortsSeconds)}"
+            } else {
+                null
+            }
+        }
+        UsageBreakdownRow("Instagram", statistics.todayInstagramSeconds)
+        UsageBreakdownRow("Pinterest", statistics.todayPinterestSeconds)
+        UsageBreakdownRow("Chrome", statistics.todayChromeSeconds)
+
+        Spacer(Modifier.height(16.dp))
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            color = when (statistics.trend) {
+                UsageTrendDirection.IMPROVING -> MaterialTheme.colorScheme.primaryContainer
+                UsageTrendDirection.INCREASING -> MaterialTheme.colorScheme.errorContainer
+                UsageTrendDirection.STABLE,
+                UsageTrendDirection.NOT_ENOUGH_DATA,
+                -> MaterialTheme.colorScheme.surfaceVariant
+            },
+        ) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = when (statistics.trend) {
+                        UsageTrendDirection.IMPROVING ->
+                            "Экранное время снижается на " +
+                                "${absoluteChangePercent(statistics.changePercent)}%"
+                        UsageTrendDirection.INCREASING -> statistics.changePercent?.let {
+                            "Экранное время выросло на ${absoluteChangePercent(it)}%"
+                        } ?: "Экранное время выросло"
+                        UsageTrendDirection.STABLE -> "Экранное время почти не изменилось"
+                        UsageTrendDirection.NOT_ENOUGH_DATA -> "Собираем базу для сравнения"
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                val recentAverage = statistics.recentAverageSeconds
+                if (recentAverage != null) {
+                    Text(
+                        "Среднее за недавние дни: ${formatUsageDuration(recentAverage)}",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Text(
+                        "Тренд появится после нескольких дней использования в двух периодах.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+        Text("Последние 7 дней", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(8.dp))
+        val maxSeconds = statistics.days.filter(UsageDayUi::observed)
+            .maxOfOrNull(UsageDayUi::totalSeconds)
+            ?.coerceAtLeast(1)
+            ?: 1
+        statistics.days.forEach { day ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(day.label, modifier = Modifier.widthIn(min = 72.dp))
+                if (day.observed) {
+                    LinearProgressIndicator(
+                        progress = {
+                            (day.totalSeconds.toDouble() / maxSeconds)
+                                .coerceIn(0.0, 1.0)
+                                .toFloat()
+                        },
+                        modifier = Modifier.weight(1f).height(8.dp),
+                    )
+                    Text(
+                        formatUsageDuration(day.totalSeconds),
+                        modifier = Modifier.widthIn(min = 68.dp),
+                    )
+                } else {
+                    Text(
+                        "Нет данных",
+                        modifier = Modifier.weight(1f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+        Text(
+            "Shorts входят во время YouTube и не прибавляются второй раз.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+@Composable
+private fun UsageBreakdownRow(
+    label: String,
+    seconds: Long,
+    detail: () -> String? = { null },
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, modifier = Modifier.weight(1f))
+        Column(horizontalAlignment = Alignment.End) {
+            Text(formatUsageDuration(seconds))
+            detail()?.let { value ->
+                Text(
+                    value,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+    }
+}
+
+private fun formatUsageDuration(seconds: Long): String {
+    val minutes = seconds.coerceAtLeast(0) / 60
+    if (minutes == 0L) return "0 мин"
+    val hours = minutes / 60
+    val remainingMinutes = minutes % 60
+    return when {
+        hours == 0L -> "$minutes мин"
+        remainingMinutes == 0L -> "$hours ч"
+        else -> "$hours ч $remainingMinutes мин"
     }
 }
 

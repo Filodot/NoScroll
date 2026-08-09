@@ -204,9 +204,20 @@ private fun TaskGateContent(
                 modifier = Modifier.padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                Text("Мини-урок", style = MaterialTheme.typography.titleLarge)
                 Text(
-                    "Сначала изучите материал. Следующий экран проверит его понимание.",
+                    if (task.type == TaskType.ENGLISH_VOCABULARY) {
+                        "Слова для запоминания"
+                    } else {
+                        "Мини-урок"
+                    },
+                    style = MaterialTheme.typography.titleLarge,
+                )
+                Text(
+                    if (task.type == TaskType.ENGLISH_VOCABULARY) {
+                        "Прочитайте слова и значения. Следующий экран проверит одно из них."
+                    } else {
+                        "Сначала изучите материал. Следующий экран проверит его понимание."
+                    },
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
                 Text(task.learningMaterial, style = MaterialTheme.typography.bodyLarge)
@@ -337,6 +348,7 @@ private fun TaskGateContent(
                         TaskType.PUSH_UPS -> "Физическая пауза"
                         TaskType.CUSTOM -> "Ваше задание"
                         TaskType.ARITHMETIC -> "Задание"
+                        TaskType.ENGLISH_VOCABULARY -> "Английские слова"
                         TaskType.LEARNING -> "Учебное задание"
                     },
                     style = MaterialTheme.typography.labelLarge,

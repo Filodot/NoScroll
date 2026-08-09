@@ -34,6 +34,7 @@ enum class TaskTarget {
 /** Content family. Adding a new family does not change the difficulty policy. */
 enum class TaskType {
     ARITHMETIC,
+    ENGLISH_VOCABULARY,
     PUSH_UPS,
     CUSTOM,
     LEARNING,

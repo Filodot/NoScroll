@@ -91,8 +91,8 @@ fun TaskSettingsScreen(
             style = MaterialTheme.typography.headlineLarge,
         )
         Text(
-            text = "Сложность зависит от накопленной нагрузки Shorts, а тип задания выбирается " +
-                "из включённых вариантов.",
+            text = "Сложность зависит от общей нагрузки в контролируемых приложениях, а тип " +
+                "задания выбирается из включённых вариантов.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyLarge,
         )
@@ -125,7 +125,8 @@ private fun LoadCard(state: TaskSettingsUiState) {
                 style = MaterialTheme.typography.bodyLarge,
             )
             Text(
-                "Нагрузка не сбрасывается в полночь и уменьшается только во время перерыва.",
+                "Нагрузка растёт во время YouTube, Instagram, Pinterest и Chrome, не " +
+                    "сбрасывается в полночь и постепенно уменьшается во время перерыва.",
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
             )
         }
@@ -404,6 +405,7 @@ private fun SectionTitle(text: String) {
 
 private fun taskTypeLabel(type: TaskType): String = when (type) {
     TaskType.ARITHMETIC -> "Арифметика"
+    TaskType.ENGLISH_VOCABULARY -> "Английские слова B1–C1"
     TaskType.PUSH_UPS -> "Движение"
     TaskType.CUSTOM -> "Мои пресеты"
     TaskType.LEARNING -> "Умные уроки"
@@ -411,6 +413,7 @@ private fun taskTypeLabel(type: TaskType): String = when (type) {
 
 private fun taskTypeDescription(type: TaskType): String = when (type) {
     TaskType.ARITHMETIC -> "Ответ проверяется автоматически"
+    TaskType.ENGLISH_VOCABULARY -> "Сначала 4 слова со значениями, затем вопрос по ним"
     TaskType.PUSH_UPS -> "6 безопасных вариантов: сила, ноги, корпус и мобильность"
     TaskType.CUSTOM -> "Одно из сохранённых вами заданий"
     TaskType.LEARNING -> "Один вопрос из готового офлайн-урока"

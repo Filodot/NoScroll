@@ -67,6 +67,31 @@ class AndroidUsageStatsSourceTest {
     }
 
     @Test
+    fun `tracked apps keep their package identity while unrelated apps remain redacted`() = runTest {
+        val raw = listOf(
+            raw(AndroidUsageStatsSource.INSTAGRAM_PACKAGE_NAME, type = 1, offsetSeconds = 1),
+            raw(AndroidUsageStatsSource.INSTAGRAM_PACKAGE_NAME, type = 2, offsetSeconds = 2),
+            raw(AndroidUsageStatsSource.PINTEREST_PACKAGE_NAME, type = 1, offsetSeconds = 3),
+            raw(AndroidUsageStatsSource.CHROME_PACKAGE_NAME, type = 1, offsetSeconds = 4),
+            raw("com.example.private", type = 1, offsetSeconds = 5),
+        )
+
+        val events = requireSuccess(source(reader = RecordingUsageEventsReader(raw)))
+
+        assertEquals(
+            listOf(
+                AndroidUsageStatsSource.INSTAGRAM_PACKAGE_NAME,
+                AndroidUsageStatsSource.INSTAGRAM_PACKAGE_NAME,
+                AndroidUsageStatsSource.PINTEREST_PACKAGE_NAME,
+                AndroidUsageStatsSource.CHROME_PACKAGE_NAME,
+                AndroidUsageStatsSource.OTHER_FOREGROUND_PACKAGE,
+            ),
+            events.map { it.packageName },
+        )
+        assertFalse(events.toString().contains("com.example.private"))
+    }
+
+    @Test
     fun `unsupported API and out-of-range events are ignored`() = runTest {
         val raw = listOf(
             RawUsageEvent(AndroidUsageStatsSource.YOUTUBE_PACKAGE_NAME, 1, START.toEpochMilli() - 1),

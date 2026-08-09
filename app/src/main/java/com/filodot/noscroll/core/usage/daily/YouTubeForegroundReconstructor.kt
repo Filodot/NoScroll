@@ -10,7 +10,7 @@ data class ForegroundReconstruction(
     val hasOpenIntervalAtEnd: Boolean,
 )
 
-/** Reconstructs YouTube foreground time from normalized, potentially unordered usage events. */
+/** Reconstructs one target package's foreground time; YouTube remains the safe default. */
 class YouTubeForegroundReconstructor(
     private val youtubePackageName: String = YOUTUBE_PACKAGE_NAME,
 ) {

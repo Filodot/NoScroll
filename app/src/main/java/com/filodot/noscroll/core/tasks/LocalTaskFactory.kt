@@ -35,6 +35,18 @@ class LocalTaskFactory(
             TaskType.ARITHMETIC -> LocalArithmeticTaskEngine(wallClock = wallClock)
                 .requireTask(difficulty, trigger, target)
 
+            TaskType.ENGLISH_VOCABULARY -> {
+                val now = wallClock.now()
+                EnglishVocabularyTaskFactory.create(
+                    id = idGenerator(now),
+                    createdAt = now,
+                    difficulty = difficulty,
+                    trigger = trigger,
+                    target = target,
+                    sequence = sequence,
+                )
+            }
+
             TaskType.PUSH_UPS -> manualTask(
                 difficulty = difficulty,
                 trigger = trigger,

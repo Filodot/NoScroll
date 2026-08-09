@@ -42,15 +42,24 @@ class InMemorySettingsRepository(
 class InMemoryUsageRepository(
     initialDailyUsage: DailyUsage,
     initialGateCycle: GateCycle,
+    initialUsageHistory: List<DailyUsage> = listOf(initialDailyUsage),
 ) : UsageRepository {
     private val mutableDailyUsage = MutableStateFlow(initialDailyUsage)
+    private val mutableUsageHistory = MutableStateFlow(
+        initialUsageHistory.sortedByDescending(DailyUsage::localDate),
+    )
     private val mutableGateCycle = MutableStateFlow(initialGateCycle)
 
     override val dailyUsage: StateFlow<DailyUsage> = mutableDailyUsage
+    override val usageHistory: StateFlow<List<DailyUsage>> = mutableUsageHistory
     override val gateCycle: StateFlow<GateCycle> = mutableGateCycle
 
     override suspend fun saveDailyUsage(usage: DailyUsage) {
         mutableDailyUsage.value = usage
+        mutableUsageHistory.value = (mutableUsageHistory.value
+            .filterNot { it.localDate == usage.localDate } + usage)
+            .sortedByDescending(DailyUsage::localDate)
+            .take(15)
     }
 
     override suspend fun saveGateCycle(cycle: GateCycle) {

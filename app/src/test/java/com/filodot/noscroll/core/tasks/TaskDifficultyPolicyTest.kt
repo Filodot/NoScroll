@@ -24,7 +24,7 @@ class TaskDifficultyPolicyTest {
         val updated = policy.update(
             state = TaskDifficultyState(updatedAt = now.minusSeconds(600)),
             now = now,
-            shortsActive = true,
+            distractingAppActive = true,
             config = config,
             observedActiveSeconds = 600,
         )
@@ -38,7 +38,7 @@ class TaskDifficultyPolicyTest {
         val updated = policy.update(
             state = TaskDifficultyState(),
             now = now,
-            shortsActive = true,
+            distractingAppActive = true,
             config = config,
             observedActiveSeconds = 1,
         )
@@ -52,7 +52,7 @@ class TaskDifficultyPolicyTest {
         val updated = policy.update(
             state = TaskDifficultyState(loadSeconds = 59L, updatedAt = now),
             now = now.plusMillis(900),
-            shortsActive = true,
+            distractingAppActive = true,
             config = config,
             observedActiveSeconds = 1,
         )
@@ -68,7 +68,7 @@ class TaskDifficultyPolicyTest {
             state = policy.update(
                 state = state,
                 now = now.plusMillis((index + 1L) * 900L),
-                shortsActive = true,
+                distractingAppActive = true,
                 config = config,
                 observedActiveSeconds = 1,
             )
@@ -82,7 +82,7 @@ class TaskDifficultyPolicyTest {
         val updated = policy.update(
             state = TaskDifficultyState(loadSeconds = 60L, updatedAt = now),
             now = now.plusSeconds(300),
-            shortsActive = true,
+            distractingAppActive = true,
             config = config,
             observedActiveSeconds = 1,
         )
@@ -100,7 +100,7 @@ class TaskDifficultyPolicyTest {
         val recovered = policy.update(
             state = state,
             now = now.plusSeconds(24 * 60 * 60L),
-            shortsActive = false,
+            distractingAppActive = false,
             config = config,
         )
 
@@ -122,7 +122,7 @@ class TaskDifficultyPolicyTest {
         val recovered = policy.update(
             state = state,
             now = now.plusSeconds(5 * 60L),
-            shortsActive = false,
+            distractingAppActive = false,
             config = config,
         )
 
@@ -137,7 +137,7 @@ class TaskDifficultyPolicyTest {
             state = policy.update(
                 state = state,
                 now = now.plusSeconds((it + 1).toLong()),
-                shortsActive = false,
+                distractingAppActive = false,
                 config = config,
             )
         }
@@ -153,7 +153,7 @@ class TaskDifficultyPolicyTest {
         val recovered = policy.update(
             state = state,
             now = now,
-            shortsActive = true,
+            distractingAppActive = true,
             config = config,
             observedActiveSeconds = 0,
         )
@@ -165,7 +165,7 @@ class TaskDifficultyPolicyTest {
     fun `wall clock rollback leaves load unchanged`() {
         val state = TaskDifficultyState(loadSeconds = 123L, updatedAt = now.plusSeconds(1))
 
-        val updated = policy.update(state, now, shortsActive = true, config = config)
+        val updated = policy.update(state, now, distractingAppActive = true, config = config)
 
         assertEquals(123L, updated.loadSeconds)
         assertEquals(now, updated.updatedAt)

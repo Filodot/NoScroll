@@ -41,6 +41,7 @@ class RoomUsageRepository(
     private val mutableDailyInitialized = MutableStateFlow(false)
     private val mutableGateInitialized = MutableStateFlow(false)
     private val mutableDailyUsage = MutableStateFlow(initialDailyUsage)
+    private val mutableUsageHistory = MutableStateFlow<List<DailyUsage>>(emptyList())
     private val mutableGateCycle = MutableStateFlow(initialGateCycle)
     private var dailySnapshotObserved = false
     private var gateSnapshotObserved = false
@@ -48,6 +49,7 @@ class RoomUsageRepository(
     val gateInitialized: StateFlow<Boolean> = mutableGateInitialized.asStateFlow()
 
     override val dailyUsage: StateFlow<DailyUsage> = mutableDailyUsage.asStateFlow()
+    override val usageHistory: StateFlow<List<DailyUsage>> = mutableUsageHistory.asStateFlow()
     override val gateCycle: StateFlow<GateCycle> = mutableGateCycle.asStateFlow()
 
     init {
@@ -75,6 +77,24 @@ class RoomUsageRepository(
                     }
                     dailySnapshotObserved = true
                     mutableDailyInitialized.value = true
+                }
+        }
+        scope.launch {
+            dailyUsageDao.observeRecent(USAGE_HISTORY_DAYS)
+                .retryWhen { error, attempt ->
+                    Log.w(LOG_TAG, "Could not observe usage history; retrying", error)
+                    delay(retryDelayMillis(attempt))
+                    true
+                }
+                .collect { entities ->
+                    mutableUsageHistory.value = entities.mapNotNull { stored ->
+                        decodeOrDelete(
+                            kind = "daily_usage_history",
+                            entityId = stored.localDate,
+                            delete = { dailyUsageDao.delete(stored.localDate) },
+                            decode = stored::toModel,
+                        )
+                    }.sortedByDescending(DailyUsage::localDate)
                 }
         }
         scope.launch {
@@ -108,6 +128,10 @@ class RoomUsageRepository(
     override suspend fun saveDailyUsage(usage: DailyUsage) {
         dailyUsageDao.upsert(usage.toEntity())
         mutableDailyUsage.value = usage
+        mutableUsageHistory.value = (mutableUsageHistory.value
+            .filterNot { it.localDate == usage.localDate } + usage)
+            .sortedByDescending(DailyUsage::localDate)
+            .take(USAGE_HISTORY_DAYS)
     }
 
     override suspend fun saveGateCycle(cycle: GateCycle) {
@@ -243,6 +267,8 @@ class RoomTaskGrantTransaction(
         entryCooldownUntilEpochMillis = entryCooldownUntil.toEpochMilli(),
     )
 }
+
+private const val USAGE_HISTORY_DAYS = 15
 
 class RoomTaskPresetRepository(
     private val dao: CustomTaskPresetDao,

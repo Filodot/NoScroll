@@ -30,21 +30,21 @@ data class TaskDifficultyState(
 /**
  * Persistent, task-type agnostic cognitive-load scale.
  *
- * Watching Shorts adds load in real time. Time away gradually removes it; the scale is not tied
- * to a calendar day. Wall-clock rollback never increases or decreases the load.
+ * Time in controlled distracting apps adds load in real time. Time away gradually removes it;
+ * the scale is not tied to a calendar day. Wall-clock rollback never changes the load.
  */
 class TaskDifficultyPolicy {
     fun update(
         state: TaskDifficultyState,
         now: Instant,
-        shortsActive: Boolean,
+        distractingAppActive: Boolean,
         config: TaskDifficultyConfig,
         observedActiveSeconds: Long? = null,
     ): TaskDifficultyState {
         val normalized = normalize(state)
         val previous = normalized.updatedAt
         if (previous == null) {
-            val initialActiveSeconds = if (shortsActive) {
+            val initialActiveSeconds = if (distractingAppActive) {
                 observedActiveSeconds.orZero().coerceAtLeast(0)
             } else {
                 0
@@ -58,7 +58,7 @@ class TaskDifficultyPolicy {
         if (now.isBefore(previous)) return normalized.copy(updatedAt = now)
 
         val elapsedSeconds = Duration.between(previous, now).seconds.coerceAtLeast(0)
-        val activeSeconds = if (shortsActive) {
+        val activeSeconds = if (distractingAppActive) {
             // MonitoringCoordinator measures active time with elapsedRealtime. Do not clamp that
             // trusted monotonic sample to wall-clock seconds: Duration.seconds rounds down and a
             // heartbeat arriving at ~999 ms would otherwise silently lose one watched second.

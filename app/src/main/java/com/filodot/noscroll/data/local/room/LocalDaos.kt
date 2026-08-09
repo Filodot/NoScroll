@@ -12,6 +12,9 @@ interface DailyUsageDao {
     @Query("SELECT * FROM daily_usage ORDER BY local_date DESC LIMIT 1")
     fun observeLatest(): Flow<DailyUsageEntity?>
 
+    @Query("SELECT * FROM daily_usage ORDER BY local_date DESC LIMIT :limit")
+    fun observeRecent(limit: Int): Flow<List<DailyUsageEntity>>
+
     @Query("SELECT * FROM daily_usage WHERE local_date = :localDate")
     suspend fun get(localDate: String): DailyUsageEntity?
 

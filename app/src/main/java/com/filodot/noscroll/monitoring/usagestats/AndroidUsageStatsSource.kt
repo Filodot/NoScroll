@@ -120,7 +120,7 @@ class AndroidUsageStatsSource internal constructor(
         val type = UsageEventNormalizer.normalize(raw.eventType, sdkInt) ?: return null
         val rawPackageName = raw.packageName?.takeIf(String::isNotBlank) ?: return null
         val packageName = when {
-            rawPackageName == YOUTUBE_PACKAGE_NAME -> YOUTUBE_PACKAGE_NAME
+            rawPackageName in TRACKED_PACKAGE_NAMES -> rawPackageName
             type == UsageEventType.ACTIVITY_RESUMED -> OTHER_FOREGROUND_PACKAGE
             else -> return null
         }
@@ -139,7 +139,17 @@ class AndroidUsageStatsSource internal constructor(
 
     companion object {
         const val YOUTUBE_PACKAGE_NAME = "com.google.android.youtube"
+        const val INSTAGRAM_PACKAGE_NAME = "com.instagram.android"
+        const val PINTEREST_PACKAGE_NAME = "com.pinterest"
+        const val CHROME_PACKAGE_NAME = "com.android.chrome"
         const val OTHER_FOREGROUND_PACKAGE = "other_foreground"
+
+        val TRACKED_PACKAGE_NAMES = setOf(
+            YOUTUBE_PACKAGE_NAME,
+            INSTAGRAM_PACKAGE_NAME,
+            PINTEREST_PACKAGE_NAME,
+            CHROME_PACKAGE_NAME,
+        )
     }
 }
 

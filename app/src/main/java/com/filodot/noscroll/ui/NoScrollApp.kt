@@ -59,6 +59,7 @@ import com.filodot.noscroll.feature.dashboard.EmergencyUiState
 import com.filodot.noscroll.feature.dashboard.FocusAppUi
 import com.filodot.noscroll.feature.dashboard.FocusModeUiState
 import com.filodot.noscroll.feature.dashboard.ShortsLimitUiState
+import com.filodot.noscroll.feature.dashboard.buildUsageStatistics
 import com.filodot.noscroll.feature.history.EmergencyHistoryAction
 import com.filodot.noscroll.feature.history.EmergencyHistoryEffect
 import com.filodot.noscroll.feature.history.EmergencyHistoryItemUi
@@ -126,6 +127,7 @@ fun NoScrollApp(
 
     val settings by appGraph.settingsRepository.settings.collectAsStateWithLifecycle()
     val dailyUsage by appGraph.usageRepository.dailyUsage.collectAsStateWithLifecycle()
+    val usageHistory by appGraph.usageRepository.usageHistory.collectAsStateWithLifecycle()
     val gateCycle by appGraph.usageRepository.gateCycle.collectAsStateWithLifecycle()
     val pendingTask by appGraph.taskRepository.pendingTask.collectAsStateWithLifecycle()
     val taskPresets by appGraph.taskPresetRepository.presets.collectAsStateWithLifecycle()
@@ -151,6 +153,7 @@ fun NoScrollApp(
         buildDashboardState(
             settings = settings,
             usage = dailyUsage,
+            usageHistory = usageHistory,
             cycle = gateCycle,
             pendingTask = pendingTask,
             emergencyState = emergencyState,
@@ -799,6 +802,7 @@ private fun InAppChallengeHost(
 private fun buildDashboardState(
     settings: UserSettings,
     usage: DailyUsage,
+    usageHistory: List<DailyUsage>,
     cycle: GateCycle,
     pendingTask: PendingTask?,
     emergencyState: EmergencyState,
@@ -886,6 +890,7 @@ private fun buildDashboardState(
             bypassActive = settings.emergencyActive || emergencyState.isActive,
             now = now,
         ),
+        statistics = buildUsageStatistics(usage, usageHistory),
         daily = when {
             !settings.dailyLimitEnabled -> DailyLimitUiState.Disabled
             !access.usageAccessGranted -> DailyLimitUiState.Unavailable
@@ -1027,7 +1032,7 @@ private fun buildTaskSettingsState(
             recoverySeconds = cycle.difficultyRecoverySeconds,
         ),
         now = Instant.now(),
-        shortsActive = false,
+        distractingAppActive = false,
         config = difficultyConfig,
     )
     val loadMinutes = (effectiveLoad.loadSeconds / 60).toInt()

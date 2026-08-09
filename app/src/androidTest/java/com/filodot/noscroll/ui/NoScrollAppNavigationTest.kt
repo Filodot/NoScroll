@@ -27,7 +27,7 @@ class NoScrollAppNavigationTest {
     fun completedUserCanMoveAcrossAllTopLevelDestinations() {
         composeRule.setApp(onboardingCompleted = true)
 
-        composeRule.onAllNodesWithText("Сегодня").assertCountEquals(2)
+        composeRule.onAllNodesWithText("Сегодня").assertCountEquals(3)
         composeRule.onNodeWithText("Ограничения").performClick()
         composeRule.onAllNodesWithText("Ограничения").assertCountEquals(2)
         composeRule.onNodeWithText("Учёба").performClick()

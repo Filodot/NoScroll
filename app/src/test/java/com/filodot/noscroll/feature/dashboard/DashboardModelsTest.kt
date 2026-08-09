@@ -1,5 +1,8 @@
 package com.filodot.noscroll.feature.dashboard
 
+import com.filodot.noscroll.core.model.DailyUsage
+import java.time.Instant
+import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -129,4 +132,51 @@ class DashboardModelsTest {
         assertEquals(0L, wholeMinutes(59))
         assertEquals(0L, wholeMinutes(-60))
     }
+
+    @Test
+    fun `statistics do not count Shorts twice and detect a lower weekly average`() {
+        val today = LocalDate.of(2026, 8, 9)
+        val current = usage(today, youtubeMinutes = 30, shortsMinutes = 20, instagramMinutes = 10)
+        val history = listOf(
+            usage(today.minusDays(1), youtubeMinutes = 20, instagramMinutes = 10),
+            usage(today.minusDays(2), youtubeMinutes = 25, instagramMinutes = 5),
+            usage(today.minusDays(8), youtubeMinutes = 50, instagramMinutes = 10),
+            usage(today.minusDays(9), youtubeMinutes = 45, instagramMinutes = 15),
+        )
+
+        val statistics = buildUsageStatistics(current, history)
+
+        assertEquals(40 * 60L, statistics.todayTotalSeconds)
+        assertEquals(20 * 60L, statistics.todayShortsSeconds)
+        assertEquals(UsageTrendDirection.IMPROVING, statistics.trend)
+        assertEquals(-50, statistics.changePercent)
+        assertTrue(statistics.days.first().observed)
+        assertFalse(statistics.days.last().observed)
+    }
+
+    @Test
+    fun `statistics wait for enough observed days before claiming progress`() {
+        val today = LocalDate.of(2026, 8, 9)
+
+        val statistics = buildUsageStatistics(
+            current = usage(today, youtubeMinutes = 10),
+            history = listOf(usage(today.minusDays(1), youtubeMinutes = 20)),
+        )
+
+        assertEquals(UsageTrendDirection.NOT_ENOUGH_DATA, statistics.trend)
+        assertEquals(null, statistics.changePercent)
+    }
+
+    private fun usage(
+        date: LocalDate,
+        youtubeMinutes: Long,
+        shortsMinutes: Long = 0,
+        instagramMinutes: Long = 0,
+    ) = DailyUsage(
+        localDate = date,
+        youtubeSeconds = youtubeMinutes * 60,
+        shortsSeconds = shortsMinutes * 60,
+        instagramSeconds = instagramMinutes * 60,
+        updatedAt = Instant.parse("2026-08-09T00:00:00Z"),
+    )
 }

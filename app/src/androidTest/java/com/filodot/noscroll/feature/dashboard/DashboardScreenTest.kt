@@ -76,6 +76,35 @@ class DashboardScreenTest {
     }
 
     @Test
+    fun dailyStatisticsShowBreakdownAndScreenTimeReduction() {
+        composeRule.setDashboard(
+            normalState().copy(
+                statistics = UsageStatisticsUiState(
+                    todayTotalSeconds = 58 * 60,
+                    todayYoutubeSeconds = 30 * 60,
+                    todayShortsSeconds = 12 * 60,
+                    todayInstagramSeconds = 18 * 60,
+                    todayPinterestSeconds = 5 * 60,
+                    todayChromeSeconds = 5 * 60,
+                    recentAverageSeconds = 45 * 60,
+                    previousAverageSeconds = 60 * 60,
+                    changePercent = -25,
+                    trend = UsageTrendDirection.IMPROVING,
+                ),
+            ),
+        )
+
+        composeRule.onNodeWithText("Статистика использования")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("58 мин").assertIsDisplayed()
+        composeRule.onNodeWithText("включая Shorts 12 мин").assertIsDisplayed()
+        composeRule.onNodeWithText("Экранное время снижается на 25%")
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
+
+    @Test
     fun recoveringMonitoringDoesNotClaimProtectionIsFullyWorking() {
         var lastAction: DashboardAction? = null
         composeRule.setDashboard(
